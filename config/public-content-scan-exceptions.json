@@ -1,0 +1,90 @@
+{
+  "apps/backend/src/modules/group-exams/group-exam-v2.service.ts": {
+    "sha256": "d4f9f695a19126d508bf125a98d6cba7424c49dca79cf3903599a2e1e358f3c9",
+    "reason": "Server-side group session control and localized errors; question and answer values are fetched at runtime, not embedded."
+  },
+  "apps/backend/src/modules/group-exams/group-exam.service.ts": {
+    "sha256": "47b3d5797b8aef52c7f1d38b33880a2da212f6af7d1ed20a3527fa3db0f8229e",
+    "reason": "Server-side group session control and localized errors; question and answer values are fetched at runtime, not embedded."
+  },
+  "apps/backend/src/modules/skct-personal/skct-personal-release-admin.ts": {
+    "sha256": "b057a83d6bb4e0a9d0e49cdf2d08f1499ed5b5934276ccf53d3423c5bca2c6e4",
+    "reason": "Server-side SKCT release validation or session handling with localized errors; no embedded private item or answer bank."
+  },
+  "apps/backend/src/modules/skct-personal/skct-personal.service.ts": {
+    "sha256": "5e9e1e627675d38801cc4fc8c446c46e4e289b9265f45f05537017413ba52ea4",
+    "reason": "Server-side SKCT release validation or session handling with localized errors; no embedded private item or answer bank."
+  },
+  "apps/backend/src/modules/study/study-attempt.service.ts": {
+    "sha256": "8234cddcef31b279912d554ce48675768ea8e7b78654157a2220a757786f619f",
+    "reason": "Server-side study request validation, authorization and feedback transport; no literal released question or answer records."
+  },
+  "apps/backend/src/modules/study/study-exam-use-cases.ts": {
+    "sha256": "4488cddfc221cc57113666ca4584808e150c561cc5eb5764f8f5c02bdb614b01",
+    "reason": "Server-side study request validation, authorization and feedback transport; no literal released question or answer records."
+  },
+  "apps/backend/src/modules/study/study.service.ts": {
+    "sha256": "f14293bb1f83bde8eef3eeb7c45b13e79116f1efaa1df12e70c77e1045ba3fef",
+    "reason": "Server-side study request validation, authorization and feedback transport; no literal released question or answer records."
+  },
+  "apps/backend/src/modules/sw-study/sw-study.service.ts": {
+    "sha256": "a568228f2b3d4b42ab7c92b7e8d6a1374341b4556550a3feff3f06f080f412bf",
+    "reason": "Server-side study request validation, authorization and feedback transport; no literal released question or answer records."
+  },
+  "apps/frontend/src/features/admin/components/admin-members-section.tsx": {
+    "sha256": "89ba5ec18a1b55cf2cefeded888574ce2bc8d90e8a7e26d98113bb2032516d5f",
+    "reason": "Administrator form labels and dynamic database-backed content rendering; no fixed question, choice or answer rows."
+  },
+  "apps/frontend/src/features/admin/components/admin-question-sections.tsx": {
+    "sha256": "dab3aa87885910b55373eaacef76ef441ff00357b8b514d7104e3cd3310642e8",
+    "reason": "Administrator form labels and dynamic database-backed content rendering; no fixed question, choice or answer rows."
+  },
+  "apps/frontend/src/features/group-exams/group-exam-client.tsx": {
+    "sha256": "fddb334ad98679d69d2243fcf57f5585454af6fe9463d4fc13d61ce56aba1539",
+    "reason": "Learner interface labels and dynamic API-backed question rendering; no embedded released prompt or answer key."
+  },
+  "apps/frontend/src/features/study/components/local-practice/workbook.tsx": {
+    "sha256": "9aa3e092b5750f2874b3555e97df925cb165de1d05e7a8cf54782de0cf03c99f",
+    "reason": "Learner interface labels and dynamic API-backed question rendering; no embedded released prompt or answer key."
+  },
+  "apps/frontend/src/features/study/components/skct-personal/skct-personal-admin.tsx": {
+    "sha256": "31a991e3e7609e47014f0060dd9e19146722a382c17176dc0723fa9adfd6c50b",
+    "reason": "Learner interface labels and dynamic API-backed question rendering; no embedded released prompt or answer key."
+  },
+  "apps/frontend/src/features/study/components/skct-personal/skct-personal-page.tsx": {
+    "sha256": "0e36a28a3669bbf86404b3820195dc7d85de6ed590fe835656980e502e87ed2a",
+    "reason": "Learner interface labels and dynamic API-backed question rendering; no embedded released prompt or answer key."
+  },
+  "apps/frontend/src/features/study/components/sql/mock/exam-runner.tsx": {
+    "sha256": "c0f0ce631a9d75ae5c2aff7899d486627a3daaae6c86d6c4b0a647dea784d3bd",
+    "reason": "Learner interface labels and dynamic API-backed question rendering; no embedded released prompt or answer key."
+  },
+  "apps/frontend/src/features/study/components/sql/practice/practice-screen.tsx": {
+    "sha256": "3ed7c3cbf3b26c8c6d130aadee9577501b423d05bc70ef9ffdeb8a345645884c",
+    "reason": "Learner interface labels and dynamic API-backed question rendering; no embedded released prompt or answer key."
+  },
+  "apps/frontend/src/features/study/components/sql/records/records-screen.tsx": {
+    "sha256": "a6b6bccd069b39d975c6622d7d39a77f91234011561af1d2da3f6f6cf7b11fdd",
+    "reason": "Learner interface labels and dynamic API-backed question rendering; no embedded released prompt or answer key."
+  },
+  "apps/frontend/src/features/study/components/study-app.tsx": {
+    "sha256": "20c7752847c15a2e16ecac2bc9e3a4a8b8804a93a4205834ac776768ad5bdd28",
+    "reason": "Learner interface labels and dynamic API-backed question rendering; no embedded released prompt or answer key."
+  },
+  "apps/frontend/src/features/study/components/study-screen-shared.tsx": {
+    "sha256": "452f0c3587d5145ca2e98e4587cd53a4fe68458835217c5eb0e8a6dc7e8f3dc1",
+    "reason": "Learner interface labels and dynamic API-backed question rendering; no embedded released prompt or answer key."
+  },
+  "apps/frontend/src/features/study/components/sw-curriculum-planner.tsx": {
+    "sha256": "faa5a506fc892c431602aff27b2246a7eb6353a103eff72fb8d3cfb09bbf4320",
+    "reason": "Learner interface labels and dynamic API-backed question rendering; no embedded released prompt or answer key."
+  },
+  "apps/frontend/src/features/study/components/sw-question-runners.tsx": {
+    "sha256": "cbcef176191c3d3148a9333b3a863270e3981f8394e98b6530db0f0449936b09",
+    "reason": "Learner interface labels and dynamic API-backed question rendering; no embedded released prompt or answer key."
+  },
+  "apps/frontend/src/features/study/model/use-practice-session.ts": {
+    "sha256": "66ac6d7f6a8583b301f36754771e35d07204bbf1a9957ecfb2508d27e48ea45f",
+    "reason": "Learner interface labels and dynamic API-backed question rendering; no embedded released prompt or answer key."
+  }
+}

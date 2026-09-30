@@ -1,0 +1,43 @@
+name: Setup Node dependencies
+description: Restore an exact dependency tree or install it from the lockfile.
+
+inputs:
+  install:
+    description: Whether this job needs the installed dependency tree.
+    required: false
+    default: "true"
+
+outputs:
+  cache-hit:
+    description: Whether the exact node_modules cache was restored.
+    value: ${{ steps.node-modules.outputs.cache-hit }}
+
+runs:
+  using: composite
+  steps:
+    - name: Set up Node.js
+      uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+      with:
+        node-version: 22.13.0
+        cache: npm
+
+    - name: Restore exact dependency tree
+      id: node-modules
+      if: inputs.install == 'true'
+      uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
+      with:
+        path: |
+          node_modules
+          !node_modules/.vite
+          !node_modules/.vite-temp
+        key: node-modules-v1-${{ runner.os }}-${{ runner.arch }}-node-22.13.0-${{ hashFiles('package.json', 'package-lock.json', '.npmrc') }}
+
+    - name: Install dependencies from lockfile
+      if: inputs.install == 'true' && steps.node-modules.outputs.cache-hit != 'true'
+      shell: bash
+      run: npm ci
+
+    - name: Verify restored dependency tree
+      if: inputs.install == 'true' && steps.node-modules.outputs.cache-hit == 'true'
+      shell: bash
+      run: npm ls --depth=0

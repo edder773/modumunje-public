@@ -1,0 +1,106 @@
+/* Question-bank privacy and compact learning-flow layout. */
+.dashboard-home .hero-card {
+  display: block;
+  min-height: 0;
+  padding: clamp(24px, 3vw, 38px);
+}
+.dashboard-home .hero-copy {
+  display: grid;
+  width: 100%;
+  max-width: none;
+  grid-template-columns: minmax(0, 1fr) minmax(320px, .9fr);
+  gap: clamp(28px, 6vw, 92px);
+  align-items: center;
+}
+.dashboard-home .hero-action-block {
+  min-width: 0;
+}
+.dashboard-home .hero-action-block > p {
+  max-width: 620px;
+  margin: 0;
+  color: var(--muted);
+  font-size: 14px;
+  line-height: 1.75;
+}
+.dashboard-home .hero-meta {
+  flex-wrap: wrap;
+  margin-block: 18px;
+}
+.setup-summary {
+  gap: 16px;
+}
+.setup-summary strong {
+  max-width: 65%;
+  font-size: 13px;
+  line-height: 1.5;
+  text-align: right;
+}
+.stats-grid {
+  align-items: start;
+}
+.difficulty-distribution,
+.category-stats {
+  min-height: 0;
+  align-self: start;
+}
+.difficulty-distribution > div:not(.card-title-row) {
+  min-height: 0;
+  align-content: start;
+}
+.explanation .markdown-body p,
+.question-detail-explanation .markdown-body p,
+.evaluation-panel .markdown-body p {
+  margin-left: 0;
+  padding-left: 0;
+  text-indent: 0;
+}
+.explanation .markdown-body p + p,
+.question-detail-explanation .markdown-body p + p,
+.evaluation-panel .markdown-body p + p {
+  margin-top: .85em;
+}
+@media (max-width: 880px) {
+  .dashboard-home .hero-copy {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 18px;
+  }
+  .dashboard-home .hero-action-block > p {
+    max-width: none;
+  }
+}
+@media (max-width: 680px) {
+  .dashboard-home .hero-card {
+    padding: 22px 18px;
+  }
+  .dashboard-home .hero-meta {
+    gap: 8px 14px;
+  }
+  .practice-intro,
+  :where(.app-shell) .mock-intro {
+    padding-top: 0;
+  }
+  .setup-summary {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+  .setup-summary strong {
+    max-width: 100%;
+    text-align: left;
+  }
+  .review-actions {
+    width: 100%;
+    grid-column: 1 / -1;
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .review-actions.single {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .review-actions .primary-button,
+  .review-actions .outline-button {
+    width: 100%;
+  }
+  .review-counts {
+    justify-content: flex-start;
+  }
+}

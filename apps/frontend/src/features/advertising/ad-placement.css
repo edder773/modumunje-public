@@ -1,0 +1,83 @@
+/* Dormant slots have no layout footprint. Only local preview reveals these boxes. */
+.ad-guide-layout,
+.ad-guide-article {
+  display: contents;
+}
+
+.ad-placement-preview {
+  box-sizing: border-box;
+  width: min(100%, 970px);
+  min-width: 0;
+  margin: var(--ad-interactive-separation) auto;
+  padding: 0;
+  color: var(--muted);
+  text-align: center;
+}
+
+.ad-placement-label {
+  display: block;
+  margin-bottom: 8px;
+  font-size: .875rem;
+  line-height: 1.5;
+}
+
+.ad-placement-preview-space {
+  box-sizing: border-box;
+  display: flex;
+  min-height: var(--ad-min-height);
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  border: 1px dashed var(--line);
+  border-radius: 4px;
+  background: var(--surface);
+  padding: 16px;
+  overflow-wrap: anywhere;
+  font-size: 1rem;
+  line-height: 1.6;
+}
+
+.ad-placement-preview-space small {
+  font-size: .8125rem;
+}
+
+.ad-placement-preview[data-ad-placement="guide-sidebar"] {
+  display: none;
+}
+
+.quiz-layout > .ad-placement-preview[data-ad-placement="practice-footer"] {
+  grid-column: 1 / -1;
+}
+
+@media (min-width: 1280px) {
+  .ad-guide-layout:has(> [data-ad-placement="guide-sidebar"][data-ad-status="preview"]) {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 300px;
+    align-items: start;
+    column-gap: 64px;
+  }
+
+  .ad-guide-layout:has(> [data-ad-status="preview"]) > .ad-guide-article {
+    display: block;
+    min-width: 0;
+  }
+
+  .ad-placement-preview[data-ad-placement="guide-sidebar"] {
+    display: block;
+    width: 300px;
+    margin: 0;
+    /* Deliberately not sticky: it never follows reading or answer controls. */
+  }
+}
+
+@media print {
+  .ad-placement-preview {
+    display: none !important;
+  }
+
+  .ad-guide-layout,
+  .ad-guide-article {
+    display: contents !important;
+  }
+}

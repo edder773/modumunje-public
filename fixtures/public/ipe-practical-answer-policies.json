@@ -1,0 +1,27 @@
+[
+  {
+    "active": true,
+    "alternatives": [],
+    "answer": "red,blue",
+    "caseSensitive": false,
+    "contentSha256": "60bcd6a0770e747bce9d50557a2b2c35856efd17a377fb38c43fd76e4e8e5e25",
+    "hint": "Enter two toy colors.",
+    "id": 99000001,
+    "mode": "parts",
+    "parts": [
+      {
+        "answers": [
+          "red"
+        ]
+      },
+      {
+        "answers": [
+          "blue"
+        ]
+      }
+    ],
+    "sourceNumber": 1,
+    "type": "text",
+    "units": []
+  }
+]

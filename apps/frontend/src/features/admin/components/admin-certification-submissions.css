@@ -1,0 +1,18 @@
+.admin-certification-submissions { min-width: 0; padding: clamp(16px, 2vw, 24px); }
+.admin-metric-grid.admin-analytics-metrics { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.admin-submission-scroll { max-height: 480px; overflow: auto; border: 1px solid var(--admin-line); border-radius: 10px; }
+.admin-submission-scroll table { width: 100%; min-width: 0; border-collapse: collapse; font-size: .875rem; }
+.admin-submission-scroll th, .admin-submission-scroll td { padding: 12px 16px; border-bottom: 1px solid var(--admin-line); text-align: left; }
+.admin-submission-scroll thead { background: var(--admin-soft); color: var(--admin-muted); }
+.admin-submission-scroll td:nth-last-child(-n+3), .admin-submission-scroll thead th:nth-last-child(-n+3) { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.admin-submission-scroll tbody th { font-weight: 600; }
+.admin-submission-total, .admin-submission-scroll tfoot { font-weight: 700; }
+.admin-submission-scroll tfoot { background: var(--admin-soft); }
+.admin-submission-scroll tfoot td, .admin-submission-scroll tfoot th { border-bottom: 0; }
+.admin-submission-scroll:focus-visible { outline: 2px solid var(--amber-dark); outline-offset: 2px; }
+@media (max-width: 600px) {
+  .admin-metric-grid.admin-analytics-metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .admin-submission-scroll th, .admin-submission-scroll td { padding: 10px 6px; font-size: .75rem; }
+}
+
+.admin-certification-submissions .admin-submission-note { margin: 12px 0 0; color: var(--admin-muted); font-size: .8125rem; line-height: 1.6; }

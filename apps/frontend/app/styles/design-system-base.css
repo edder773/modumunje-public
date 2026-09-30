@@ -1,0 +1,69 @@
+:root {
+  --canvas: #f6f0e4;
+  --surface: #fffdf8;
+  --surface-2: #f3ede2;
+  --ink: #332d27;
+  --ink-soft: #514536;
+  --muted: #6c6257;
+  --faint: var(--muted);
+  --on-dark-muted: #c9bcaa;
+  --line: #d9cebd;
+  --line-soft: #e8dfd1;
+  --amber: #b48a50;
+  --amber-dark: #795831;
+  --amber-soft: #efe3ce;
+  --olive: #526747;
+  --olive-soft: #e9eee3;
+  --red: #9d4b3e;
+  --red-soft: #f7e9e4;
+  --shadow: 0 8px 28px rgba(48, 38, 22, 0.07);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html {
+  background: var(--canvas);
+  scroll-behavior: smooth;
+}
+
+body {
+  margin: 0;
+  background:
+    radial-gradient(circle at 80% 4%, rgba(255,255,255,.9), transparent 26rem),
+    var(--canvas);
+  color: var(--ink);
+  font-family: Pretendard, "Noto Sans KR", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+}
+
+button,
+input,
+textarea,
+select {
+  color: inherit;
+  font: inherit;
+}
+
+button {
+  cursor: pointer;
+}
+
+input {
+  accent-color: var(--amber-dark);
+}
+
+::placeholder {
+  color: var(--muted);
+  opacity: 1;
+}
+
+button:focus-visible,
+input:focus-visible,
+textarea:focus-visible,
+select:focus-visible,
+a:focus-visible,
+summary:focus-visible {
+  outline: 3px solid var(--amber-dark);
+  outline-offset: 2px;
+}

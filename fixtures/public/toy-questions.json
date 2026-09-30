@@ -1,0 +1,16 @@
+[
+  {
+    "id": 99000001,
+    "examScope": "IPEP",
+    "kind": "descriptive",
+    "prompt": "A toy robot has a red card followed by a blue card. Enter the two colors in order.",
+    "explanation": "The first card is red; the second card is blue."
+  },
+  {
+    "id": 99000002,
+    "examScope": "IPEP",
+    "kind": "descriptive",
+    "prompt": "A toy signal shows green. Enter its color.",
+    "explanation": "The toy signal is green."
+  }
+]

@@ -1,0 +1,26 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "lib": [
+      "ES2022",
+      "DOM"
+    ],
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "allowJs": true,
+    "checkJs": true,
+    "strict": true,
+    "noEmit": true,
+    "skipLibCheck": true,
+    "types": []
+  },
+  "files": [
+    "apps/backend/src/common/database/d1-query-bindings.mjs",
+    "apps/backend/src/modules/study/study-practice-query.mjs",
+    "apps/backend/src/modules/sw-study/sw-practice-query.mjs",
+    "packages/shared/src/runtime/latest-request-coordinator.mjs",
+    "packages/shared/src/runtime/latest-value-queue.mjs",
+    "packages/shared/src/study/study-concurrency-contract.mjs",
+    "packages/shared/src/runtime/session-epoch.mjs"
+  ]
+}

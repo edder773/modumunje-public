@@ -1,0 +1,16 @@
+/* Past-paper selection keeps year/round labels visible without a long answer grid. */
+.past-exam-section { display: grid; gap: 1rem; min-width: 0; }
+.past-exam-heading { display: flex; justify-content: space-between; align-items: end; gap: 1.2rem; flex-wrap: wrap; }
+.past-exam-heading h2 { margin: .4rem 0; }
+.past-exam-heading p, .past-exam-guide { color: var(--muted); line-height: 1.65; margin: 0; }
+.past-exam-heading label { display: grid; gap: .4rem; font-weight: 650; }
+.past-exam-heading select { min-width: 9rem; padding: .65rem .8rem; border: 1px solid var(--line); border-radius: .75rem; background: var(--surface); color: inherit; font: inherit; }
+.past-exam-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 240px), 1fr)); gap: 1rem; }
+.past-exam-card { padding: 1.25rem; display: flex; flex-direction: column; gap: .55rem; min-width: 0; }
+.past-exam-card h3 { font-size: 1.25rem; margin: 0; }
+.past-exam-card > span, .past-exam-card p { color: var(--muted); margin: 0; font-size: .9rem; line-height: 1.55; }
+.past-exam-card .exam-card-actions { margin-top: auto; padding-top: .75rem; display: flex; flex-wrap: wrap; gap: .6rem; }
+.past-exam-card .past-exam-source-note { font-size: .8rem; }
+.past-original-number { font-size: .85rem; color: var(--muted); }
+.exam-review-number small { display: block; font-size: .75rem; font-weight: 500; white-space: nowrap; }
+.exam-result-hero .past-result-title { font-size: 1.1rem; font-weight: 700; color: inherit; }

@@ -1,0 +1,187 @@
+:root { --font-size-caption: 12px; }
+
+/* Readability and management simplification pass. Keep overrides scoped. */
+.dashboard-home {
+  gap: 28px;
+}
+.dashboard-home .hero-grid {
+  grid-template-columns: minmax(0, 1fr);
+}
+.dashboard-home .hero-card {
+  min-height: 280px;
+  grid-template-columns: minmax(0, 1.35fr) minmax(300px, .65fr);
+  align-items: center;
+  gap: clamp(28px, 5vw, 72px);
+  padding: clamp(26px, 3vw, 40px);
+}
+.dashboard-home .hero-copy {
+  max-width: 660px;
+}
+.dashboard-home .code-note {
+  width: 100%;
+  max-width: 390px;
+  justify-self: end;
+}
+.dashboard-home .topic-card {
+  min-height: 190px;
+}
+.dashboard-home .topic-card > p {
+  min-height: 42px;
+  line-height: 1.7;
+}
+.dashboard-home .topic-meta {
+  margin-top: 18px;
+}
+.markdown-body p {
+  white-space: normal;
+  overflow-wrap: anywhere;
+  word-break: normal;
+}
+.markdown-body ul,
+.markdown-body ol {
+  padding-left: 1.3em;
+}
+.explanation .markdown-body,
+.question-detail-explanation .markdown-body,
+.evaluation-panel .markdown-body {
+  text-align: left;
+}
+.explanation .markdown-body ul,
+.explanation .markdown-body ol,
+.question-detail-explanation .markdown-body ul,
+.question-detail-explanation .markdown-body ol,
+.evaluation-panel .markdown-body ul,
+.evaluation-panel .markdown-body ol {
+  padding-left: 1.15em;
+}
+.explanation .markdown-body h1,
+.explanation .markdown-body h2,
+.explanation .markdown-body h3,
+.explanation .markdown-body h4,
+.question-detail-explanation .markdown-body h1,
+.question-detail-explanation .markdown-body h2,
+.question-detail-explanation .markdown-body h3,
+.question-detail-explanation .markdown-body h4,
+.evaluation-panel .markdown-body h1,
+.evaluation-panel .markdown-body h2,
+.evaluation-panel .markdown-body h3,
+.evaluation-panel .markdown-body h4 {
+  margin-left: 0;
+  text-align: left;
+}
+.question-detail-explanation > strong {
+  display: block;
+  margin-bottom: 12px;
+}
+:where(.app-shell) {
+.theory-reader {
+  width: 100%;
+  max-width: 1420px;
+}
+.theory-content {
+  width: 100%;
+  max-width: none;
+  margin: 32px 0 36px;
+  text-align: left;
+}
+.theory-modal-content {
+  width: 100%;
+  max-width: 940px;
+  margin: 32px 0 36px;
+  text-align: left;
+}
+.theory-content .markdown-body,
+.theory-modal-content .markdown-body {
+  text-align: left;
+}
+.theory-modal-content {
+  color: var(--ink-soft);
+  font-family: Georgia, "Noto Serif KR", serif;
+  font-size: 16px;
+  line-height: 2.05;
+}
+}
+.stats-summary {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+.difficulty-distribution > div:not(.card-title-row) {
+  overflow: visible;
+}
+.difficulty-subject-list p {
+  align-items: flex-start;
+}
+.difficulty-subject-list p span,
+.difficulty-subject-list p strong {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.topic-stat {
+  padding-block: 12px;
+}
+.sidebar-foot > p {
+  border-top: 1px solid var(--line-soft);
+  padding-top: 14px;
+  line-height: 1.6;
+}
+.sidebar-foot > p span {
+  display: block;
+  white-space: nowrap;
+}
+@media (max-width: 880px) {
+  .dashboard-home .hero-card {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 22px;
+  }
+  .dashboard-home .code-note {
+    max-width: 100%;
+    justify-self: stretch;
+  }
+  .stats-summary {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+@media (max-width: 680px) {
+  .mobile-nav {
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+  }
+  .mobile-nav-item {
+    gap: 5px;
+    padding-inline: 3px;
+    font-size: var(--font-size-caption);
+  }
+  .mobile-nav-item > span {
+    font-size: 18px;
+  }
+  .mobile-more-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .dashboard-home {
+    gap: 22px;
+  }
+  .dashboard-home .hero-card {
+    gap: 18px;
+  }
+  .dashboard-home .topic-card {
+    min-height: 0;
+  }
+  .dashboard-home .topic-card > p {
+    min-height: 0;
+  }
+  .stats-summary {
+    grid-template-columns: 1fr;
+  }
+:where(.app-shell) {
+  .theory-reader {
+    padding: 22px 17px;
+  }
+
+
+  .theory-content,
+  .theory-modal-content {
+    margin: 24px 0 28px;
+  }
+  }
+  .difficulty-subject-list p {
+    flex-direction: column;
+  }
+}

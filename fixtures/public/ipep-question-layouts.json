@@ -1,0 +1,8 @@
+[
+  {
+    "id": 99000001,
+    "sourcePrompt": "A toy robot has a red card followed by a blue card. Enter the two colors in order.",
+    "stem": "Toy cards",
+    "details": "Enter red, then blue."
+  }
+]

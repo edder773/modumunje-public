@@ -1,0 +1,52 @@
+{
+  "schemaVersion": 1,
+  "decisionId": "ADR-0001",
+  "reviewedAt": "2026-09-03",
+  "currentPlatform": {
+    "hosting": "openai-sites",
+    "runtime": "single-worker",
+    "api": "embedded-next-routes",
+    "database": "cloudflare-d1",
+    "decision": "retain-sites"
+  },
+  "advertising": {
+    "provider": "google-adsense",
+    "platformFit": "supported-with-controlled-activation",
+    "activationState": "reserved-only",
+    "activationPrerequisites": [
+      "approved-site-and-publisher-id",
+      "manual-placement-and-slot-id",
+      "regional-certified-cmp",
+      "least-privilege-csp-allowlist",
+      "root-ads-txt",
+      "privacy-and-browser-verification"
+    ],
+    "backendRequired": false
+  },
+  "fallback": {
+    "target": "independent-nestjs-http-backend",
+    "frontendHosting": "openai-sites",
+    "requiredEvidence": [
+      "required-capability-named",
+      "sites-limitation-reproduced",
+      "in-platform-mitigation-measured",
+      "cost-security-and-rollback-reviewed",
+      "architecture-decision-approved"
+    ],
+    "triggers": [
+      "required-native-or-raw-tcp-integration",
+      "required-long-lived-process-or-runtime-lifecycle",
+      "required-private-network-connectivity",
+      "measured-sla-remains-unmet-after-sites-mitigation",
+      "required-third-party-integration-is-proven-incompatible-with-sites"
+    ],
+    "nonTriggers": [
+      "adsense-head-script-or-meta-tag",
+      "root-ads-txt-hosting",
+      "existing-http-api-routes",
+      "traffic-growth-without-measured-breach",
+      "general-slowness-without-route-level-evidence",
+      "framework-preference-or-speculative-future-use"
+    ]
+  }
+}

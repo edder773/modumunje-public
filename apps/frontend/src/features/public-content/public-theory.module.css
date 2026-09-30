@@ -1,0 +1,9 @@
+.directory { overflow-wrap: anywhere; }
+.directory :global(.theory-category-tabs a) { display: inline-flex; align-items: center; text-decoration: none; }
+.directory :global(.theory-controls) { margin: 0; }
+.directory :global(.theory-search-reset) { text-decoration: none; }
+/* Keep the original amber labels readable against their pale backgrounds. */
+.directory :global(.theory-category-tabs a span),
+.directory :global(.theory-card .category-label) { color: var(--amber-dark); }
+
+.continuation { margin-top: 18px; }

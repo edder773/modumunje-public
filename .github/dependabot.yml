@@ -1,0 +1,37 @@
+version: 2
+updates:
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+      day: tuesday
+      time: "03:17"
+      timezone: Asia/Seoul
+    open-pull-requests-limit: 5
+    groups:
+      production-dependencies:
+        dependency-type: production
+        update-types:
+          - minor
+          - patch
+      development-dependencies:
+        dependency-type: development
+        update-types:
+          - minor
+          - patch
+    ignore:
+      # Major upgrades require an explicit compatibility review instead of
+      # opening one-off PRs outside the minor/patch groups. Dependabot security
+      # updates are unaffected by version-update ignore rules.
+      - dependency-name: "*"
+        update-types:
+          - version-update:semver-major
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+      day: tuesday
+      time: "03:47"
+      timezone: Asia/Seoul
+    open-pull-requests-limit: 5

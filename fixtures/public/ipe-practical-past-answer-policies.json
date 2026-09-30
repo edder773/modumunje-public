@@ -1,0 +1,17 @@
+[
+  {
+    "active": true,
+    "alternatives": [],
+    "answer": "green",
+    "caseSensitive": false,
+    "contentSha256": "b932107b844a743dfb75236abb692f0c2f4fc9b9f4e369921ba1e598b9411049",
+    "formId": "synthetic-demo",
+    "groups": [],
+    "hint": "Enter the toy signal color.",
+    "id": 99000002,
+    "mode": "text",
+    "originalNumber": 1,
+    "parts": [],
+    "reject": []
+  }
+]

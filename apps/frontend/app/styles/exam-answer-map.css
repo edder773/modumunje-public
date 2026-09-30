@@ -1,0 +1,98 @@
+:where(.app-shell) {
+.exam-answer-map.exam-answer-map-compact {
+ padding: 16px;
+}
+.exam-answer-map-compact .exam-map-summary > strong {
+ font-size: 1rem;
+}
+.exam-answer-map.exam-answer-map-compact .exam-map-summary > span {
+ font-size: .875rem;
+ line-height: 1.6;
+}
+.exam-map-shortcuts {
+ display: flex;
+ flex-wrap: wrap;
+ gap: 8px;
+ margin-top: 12px;
+}
+.exam-map-shortcuts > button {
+ flex: 1 1 100px;
+ padding: 8px;
+ font-size: .875rem;
+ line-height: 1.4;
+ white-space: normal;
+}
+.exam-map-disclosure {
+ margin-top: 12px;
+ border-top: 1px solid var(--line);
+}
+.exam-map-disclosure > summary {
+ display: flex;
+ align-items: center;
+ flex-wrap: wrap;
+ gap: 6px 10px;
+ min-height: 44px;
+ padding-block: 10px;
+ list-style: none;
+ cursor: pointer;
+ font-size: .875rem;
+ font-weight: 700;
+}
+.exam-map-disclosure > summary::-webkit-details-marker {
+ display: none;
+}
+.exam-map-current {
+ margin-left: auto;
+ color: var(--muted);
+ font-weight: 500;
+}
+.exam-map-close-label,
+.exam-map-disclosure[open] .exam-map-open-label {
+ display: none;
+}
+.exam-map-disclosure[open] .exam-map-close-label {
+ display: inline;
+}
+.exam-map-disclosure[open] .exam-map-chevron {
+ transform: rotate(180deg);
+}
+.exam-map-pages {
+ display: grid;
+ grid-template-columns: 44px minmax(0, 1fr) 44px;
+ align-items: center;
+ gap: 8px;
+ margin-top: 4px;
+}
+.exam-map-pages > select {
+ width: 100%;
+ min-width: 0;
+ min-height: 44px;
+ padding: 8px;
+ border: 1px solid var(--line);
+ border-radius: 8px;
+ background: var(--surface);
+ color: var(--ink);
+ font: inherit;
+ font-size: .875rem;
+}
+.exam-map-pages > button {
+ padding: 8px;
+ font-size: 1rem;
+}
+.exam-answer-map-compact .exam-number-grid {
+ grid-template-columns: repeat(auto-fit, minmax(44px, 1fr));
+ gap: 6px;
+ margin-top: 10px;
+}
+.exam-answer-map-compact .exam-number-grid button {
+ aspect-ratio: auto;
+ height: 44px;
+ padding: 4px;
+ font-size: .875rem;
+}
+.exam-map-disclosure > summary:focus-visible,
+.exam-map-pages > select:focus-visible {
+ outline: 3px solid var(--ink);
+ outline-offset: 3px;
+}
+}

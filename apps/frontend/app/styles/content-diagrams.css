@@ -1,0 +1,10 @@
+/* Keep learning diagrams readable without widening the learner page. */
+.markdown-diagram-scroll { width: 100%; max-width: 100%; overflow-x: auto; overscroll-behavior-x: contain; }
+.markdown-diagram .markdown-diagram-scroll img { min-width: 720px; width: 100%; max-width: none; background: var(--surface); }
+.markdown-diagram .diagram-enlarge { display: inline-block; margin: 0 1rem 1rem; color: var(--amber-dark); font-size: .9rem; }
+.markdown-diagram .diagram-toolbar { display: flex; flex-wrap: wrap; justify-content: space-between; gap: .5rem; padding: .8rem 1rem; font-size: .85rem; color: var(--ink-soft); }
+.markdown-diagram .diagram-toolbar .diagram-enlarge { margin: 0; }
+.markdown-diagram-scroll:focus-visible { outline: 2px solid var(--amber-dark); outline-offset: -3px; }
+
+.question-stem .rich-content { font: inherit; }
+.question-stem code.inline-code { font-weight: inherit; }

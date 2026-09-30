@@ -1,0 +1,51 @@
+.route-status-page {
+  min-height: 100dvh;
+  display: grid;
+  place-items: center;
+  padding: 32px 20px;
+}
+
+.route-status-card {
+  width: min(100%, 640px);
+  padding: clamp(28px, 5vw, 48px);
+}
+
+.route-status-card h1 {
+  margin: 10px 0 12px;
+}
+
+.route-status-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-top: 24px;
+}
+
+.inline-error-boundary {
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  padding: 20px;
+  background: var(--surface);
+}
+
+.inline-error-boundary p {
+  margin: 8px 0 14px;
+}
+
+.inline-error-boundary button {
+  min-height: 42px;
+  padding: 0 16px;
+  border: 1px solid currentColor;
+  border-radius: 10px;
+  background: transparent;
+  font: inherit;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.route-status-actions a {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 44px;
+}

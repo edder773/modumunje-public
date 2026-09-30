@@ -1,0 +1,22 @@
+.course-preparation { width: 100%; max-width: 1120px; }
+.preparation-breadcrumb { display: flex; flex-wrap: wrap; gap: 10px; color: var(--muted); font-size: .875rem; }
+.preparation-breadcrumb a { color: inherit; text-underline-offset: 3px; }
+.preparation-notice { display: flex; align-items: center; gap: 16px; padding: 20px 24px; }
+.preparation-notice p { margin: 0; line-height: 1.7; }
+.preparation-badge { flex-shrink: 0; border-radius: 8px; background: var(--amber-soft); color: var(--amber-dark); padding: 6px 10px; font-size: .875rem; font-weight: 700; }
+.preparation-courses { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 20px; }
+.preparation-courses.single { grid-template-columns: minmax(0, 1fr); }
+.preparation-course { display: flex; min-width: 0; flex-direction: column; align-items: start; gap: 22px; padding: 26px; }
+.preparation-course h2 { margin: 8px 0; font-family: inherit; font-size: 1.4rem; }
+.preparation-course h3 { margin: 0 0 10px; font-size: 1rem; }
+.preparation-course p { margin: 0; color: var(--muted); line-height: 1.7; }
+.preparation-course ol { margin: 0; padding-left: 22px; line-height: 2; }
+.preparation-course .preparation-features { width: 100%; margin-top: auto; border-top: 1px solid var(--line-soft); padding-top: 18px; font-size: .875rem; }
+.preparation-course .outline-button { display: inline-flex; align-items: center; gap: 24px; text-decoration: none; }
+.preparation-source { margin: 0; color: var(--muted); font-size: .875rem; line-height: 1.7; }
+.preparation-source a { color: var(--amber-dark); text-underline-offset: 3px; }
+@media (max-width: 700px) {
+  .preparation-courses { grid-template-columns: minmax(0, 1fr); }
+  .preparation-notice { align-items: start; flex-direction: column; gap: 10px; }
+  .preparation-course { padding: 20px; }
+}

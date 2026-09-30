@@ -1,0 +1,180 @@
+/* Shared administration controls, domain navigation, and status feedback. */
+.admin-domain-tabs {
+  display: flex;
+  width: fit-content;
+  max-width: 100%;
+  gap: 6px;
+  border: 1px solid var(--admin-line);
+  border-radius: 10px;
+  background: var(--surface);
+  padding: 5px;
+}
+
+.admin-domain-tabs a {
+  display: inline-flex;
+  min-height: 44px;
+  align-items: center;
+  justify-content: center;
+  border-radius: 7px;
+  color: var(--ink-soft);
+  padding: 8px 17px;
+  font-size: 13px;
+  font-weight: 800;
+  text-decoration: none;
+}
+
+.admin-domain-tabs a.active {
+  background: var(--admin-ink);
+  color: var(--surface);
+}
+
+.admin-filter-card label,
+.admin-form label,
+.restore-preview > label,
+.backup-create-field,
+.admin-settings-grid label,
+.admin-custom-period label,
+.admin-report-card > label {
+  font-size: 12px;
+}
+
+.admin-filter-card input,
+.admin-filter-card select,
+.admin-form input,
+.admin-form select,
+.admin-form textarea,
+.admin-card-head input,
+.admin-card-head select,
+.admin-bulk-bar input,
+.admin-bulk-bar select,
+.admin-log-search input,
+.admin-error-groups select,
+.admin-table select,
+.admin-settings-grid input,
+.admin-settings-grid select,
+.admin-settings-grid textarea,
+.admin-custom-period input {
+  font-size: 13px;
+}
+
+.admin-filter-card input,
+.admin-filter-card select,
+.admin-form input,
+.admin-form select,
+.admin-search button,
+.admin-card-head select,
+.admin-bulk-bar input,
+.admin-bulk-bar select,
+.admin-log-search input,
+.admin-table select,
+.admin-settings-grid input,
+.admin-settings-grid select,
+.admin-custom-period input,
+.admin-pagination button,
+.admin-row-actions button {
+  min-height: 44px;
+}
+
+.admin-table {
+  font-size: 13px;
+}
+
+.admin-table th,
+.admin-table td > small,
+.admin-table-head span,
+.admin-bulk-bar > span {
+  font-size: 12px;
+}
+
+.admin-row-actions button,
+.admin-row-actions a,
+.admin-row-actions .admin-disabled-action {
+  min-height: 44px;
+  font-size: 12px;
+}
+
+.admin-title-button {
+  min-height: 0;
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.55;
+}
+
+.admin-table-wrap {
+  scrollbar-gutter: stable;
+}
+
+.admin-table-wrap:focus-within {
+  box-shadow: inset 0 0 0 2px var(--amber-dark);
+}
+
+.admin-shell :disabled,
+.admin-shell [aria-disabled="true"] {
+  cursor: not-allowed;
+  opacity: .52;
+}
+
+@media (max-width: 700px) {
+  .admin-domain-tabs {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    width: 100%;
+  }
+
+  .admin-domain-tabs a {
+    width: 100%;
+    padding-inline: 8px;
+  }
+
+  .admin-filter-card form {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .admin-table {
+    min-width: 760px;
+  }
+}
+
+.admin-domain-tabs { flex-wrap: wrap; }
+.admin-domain-coverage { display: flex; flex-wrap: wrap; gap: 12px; margin: 16px 0; }
+.admin-domain-coverage > span { display: grid; gap: 5px; border: 1px solid var(--admin-border, var(--line)); border-radius: 10px; padding: 12px 16px; }
+.admin-practice-link { display: inline-block; margin: 4px 12px 4px 0; text-decoration: underline; text-underline-offset: 3px; }
+.quality-results-card .admin-card-head { flex-wrap: wrap; align-items: flex-end; }
+.quality-results-card .admin-card-head > div { flex: 1 1 280px; }
+.quality-results-card .admin-card-head label { display: grid; gap: 6px; min-width: 140px; }
+
+
+.admin-menu-label {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+}
+
+.admin-notification-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 22px;
+  height: 22px;
+  padding: 0 6px;
+  border-radius: 999px;
+  background: var(--red);
+  color: #fff;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+  flex-shrink: 0;
+}
+
+.admin-menu-button { position: relative; }
+.admin-menu-button > .admin-notification-badge {
+  position: absolute;
+  top: -7px;
+  right: -7px;
+}
+
+.backup-failure-detail { max-width: 240px; margin-top: 8px; }
+.backup-failure-detail summary { cursor: pointer; color: var(--red); }
+.backup-failure-detail p { white-space: normal; overflow-wrap: anywhere; font-size: 12px; line-height: 1.5; }

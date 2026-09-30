@@ -1,0 +1,746 @@
+{
+  "schemaVersion": 3,
+  "defaultExamType": "SQLP",
+  "fields": [
+    {
+      "id": "sql",
+      "engineId": "certification",
+      "name": "SQL",
+      "shortLabel": "SQL",
+      "cardTitle": "SQL 자격증",
+      "summary": "SQLD 기본 과정부터 SQLP 심화 과정까지 이론, 문제 풀이와 모의고사로 학습합니다.",
+      "status": "available"
+    },
+    {
+      "id": "data-architecture",
+      "engineId": "certification",
+      "name": "데이터 아키텍처",
+      "shortLabel": "DA",
+      "brandSubtitleLines": [
+        "데이터 아키텍처",
+        "자격 학습"
+      ],
+      "cardTitle": "데이터 아키텍처 자격증",
+      "summary": "DAsP 기초 과정부터 DAP 전문가 과정까지 이론, 문제 풀이와 모의고사로 학습합니다.",
+      "status": "available"
+    },
+    {
+      "id": "big-data-analysis",
+      "engineId": "certification",
+      "name": "빅데이터 분석",
+      "shortLabel": "BA",
+      "brandSubtitleLines": [
+        "빅데이터분석기사",
+        "필기 학습"
+      ],
+      "cardTitle": "빅데이터분석기사",
+      "summary": "빅데이터분석기사 필기 1·2·3·4과목과 실기 작업형 제1·2·3유형 로컬 실습을 학습합니다.",
+      "status": "available"
+    },
+    {
+      "id": "information-processing",
+      "engineId": "certification",
+      "name": "정보처리",
+      "shortLabel": "정보처리",
+      "brandSubtitleLines": [
+        "정보처리기사",
+        "필기·실기 학습"
+      ],
+      "cardTitle": "정보처리기사",
+      "summary": "공통 핵심 이론은 함께 학습하고, 필기 객관식과 실기 필답형은 과정별 문제로 준비합니다.",
+      "status": "available"
+    },
+    {
+      "id": "information-security",
+      "engineId": "certification",
+      "name": "정보보안",
+      "shortLabel": "보안",
+      "brandSubtitleLines": [
+        "정보보안기사",
+        "필기·실기 학습"
+      ],
+      "cardTitle": "정보보안기사",
+      "summary": "정보보안기사 필기와 실기를 과목별 이론과 문제로 학습할 수 있도록 준비하고 있습니다.",
+      "status": "available"
+    }
+  ],
+  "subjects": [
+    {
+      "id": "data-modeling",
+      "name": "데이터 모델링의 이해",
+      "aliases": []
+    },
+    {
+      "id": "sql-basics",
+      "name": "SQL 기본 및 활용",
+      "aliases": []
+    },
+    {
+      "id": "sql-advanced-tuning",
+      "name": "SQL 고급 활용 및 튜닝",
+      "aliases": []
+    },
+    {
+      "id": "enterprise-architecture",
+      "name": "전사아키텍처 이해",
+      "aliases": []
+    },
+    {
+      "id": "data-requirements",
+      "name": "데이터 요건 분석",
+      "aliases": []
+    },
+    {
+      "id": "data-standardization",
+      "name": "데이터 표준화",
+      "aliases": []
+    },
+    {
+      "id": "data-modeling-practice",
+      "name": "데이터 모델링",
+      "aliases": []
+    },
+    {
+      "id": "database-design-and-use",
+      "name": "데이터베이스 설계와 이용",
+      "aliases": []
+    },
+    {
+      "id": "data-quality-management",
+      "name": "데이터 품질 관리 이해",
+      "aliases": []
+    },
+    {
+      "id": "big-data-analysis-planning",
+      "name": "빅데이터 분석기획",
+      "aliases": [
+        "빅데이터 분석 기획"
+      ]
+    },
+    {
+      "id": "big-data-exploration",
+      "name": "빅데이터 탐색",
+      "aliases": []
+    },
+    {
+      "id": "big-data-modeling",
+      "name": "빅데이터 모델링",
+      "aliases": []
+    },
+    {
+      "id": "big-data-result-interpretation",
+      "name": "빅데이터 결과 해석",
+      "aliases": []
+    },
+    {
+      "id": "ipe-software-design",
+      "name": "소프트웨어 설계",
+      "aliases": [
+        "소프트웨어설계"
+      ]
+    },
+    {
+      "id": "ipe-software-development",
+      "name": "소프트웨어 개발",
+      "aliases": [
+        "소프트웨어개발"
+      ]
+    },
+    {
+      "id": "ipe-database-construction",
+      "name": "데이터베이스 구축",
+      "aliases": [
+        "데이터베이스구축"
+      ]
+    },
+    {
+      "id": "ipe-programming-language-utilization",
+      "name": "프로그래밍 언어 활용",
+      "aliases": [
+        "프로그래밍언어활용"
+      ]
+    },
+    {
+      "id": "ipe-information-system-construction-management",
+      "name": "정보시스템 구축 관리",
+      "aliases": [
+        "정보시스템구축관리"
+      ]
+    },
+    {
+      "id": "ipe-practical-work",
+      "name": "정보처리실무",
+      "aliases": [
+        "정보처리 실무"
+      ]
+    },
+    {
+      "id": "ise-system-security",
+      "name": "시스템보안",
+      "aliases": [
+        "시스템 보안"
+      ]
+    },
+    {
+      "id": "ise-network-security",
+      "name": "네트워크보안",
+      "aliases": [
+        "네트워크 보안"
+      ]
+    },
+    {
+      "id": "ise-application-security",
+      "name": "어플리케이션보안",
+      "aliases": [
+        "어플리케이션 보안",
+        "애플리케이션 보안"
+      ]
+    },
+    {
+      "id": "ise-security-general",
+      "name": "정보보안일반",
+      "aliases": [
+        "정보보안 일반"
+      ]
+    },
+    {
+      "id": "ise-security-management-law",
+      "name": "정보보안관리 및 법규",
+      "aliases": [
+        "정보보안 관리 및 법규"
+      ]
+    },
+    {
+      "id": "ise-practical-work",
+      "name": "정보보안 실무",
+      "aliases": [
+        "정보보안실무"
+      ]
+    }
+  ],
+  "contentScopes": [
+    {
+      "id": "SQLD",
+      "courseExamTypes": [
+        "SQLD"
+      ],
+      "aliases": []
+    },
+    {
+      "id": "SQLP",
+      "courseExamTypes": [
+        "SQLP"
+      ],
+      "aliases": []
+    },
+    {
+      "id": "both",
+      "courseExamTypes": [
+        "SQLD",
+        "SQLP"
+      ],
+      "aliases": [
+        "common",
+        "SQLD·SQLP",
+        "SQLD/SQLP",
+        "SQLD+SQLP",
+        "SQLD&SQLP"
+      ]
+    },
+    {
+      "id": "DASP",
+      "courseExamTypes": [
+        "DASP"
+      ],
+      "aliases": []
+    },
+    {
+      "id": "DAP",
+      "courseExamTypes": [
+        "DAP"
+      ],
+      "aliases": []
+    },
+    {
+      "id": "DA",
+      "courseExamTypes": [
+        "DASP",
+        "DAP"
+      ],
+      "aliases": [
+        "DA_COMMON",
+        "DA-COMMON",
+        "DA COMMON",
+        "DASP·DAP",
+        "DASP/DAP",
+        "DASP+DAP",
+        "DASP&DAP"
+      ]
+    },
+    {
+      "id": "BAE",
+      "courseExamTypes": [
+        "BAE"
+      ],
+      "aliases": [
+        "BIGDATA",
+        "BIG-DATA",
+        "BIG_DATA",
+        "빅데이터분석기사",
+        "빅분기"
+      ]
+    },
+    {
+      "id": "IPEW",
+      "courseExamTypes": [
+        "IPEW"
+      ],
+      "aliases": [
+        "정보처리기사 필기",
+        "정처기 필기"
+      ]
+    },
+    {
+      "id": "IPEP",
+      "courseExamTypes": [
+        "IPEP"
+      ],
+      "aliases": [
+        "정보처리기사 실기",
+        "정처기 실기"
+      ]
+    },
+    {
+      "id": "IPE",
+      "courseExamTypes": [
+        "IPEW",
+        "IPEP"
+      ],
+      "aliases": [
+        "IPE_COMMON",
+        "IPE-COMMON",
+        "IPE COMMON",
+        "정보처리기사",
+        "정보처리기사 공통",
+        "정처기 공통"
+      ]
+    },
+    {
+      "id": "ISEW",
+      "courseExamTypes": [
+        "ISEW"
+      ],
+      "aliases": [
+        "정보보안기사 필기",
+        "보안기사 필기"
+      ]
+    },
+    {
+      "id": "ISEP",
+      "courseExamTypes": [
+        "ISEP"
+      ],
+      "aliases": [
+        "정보보안기사 실기",
+        "보안기사 실기"
+      ]
+    }
+  ],
+  "courses": [
+    {
+      "examType": "SQLD",
+      "fieldId": "sql",
+      "courseId": "sqld",
+      "name": "SQLD",
+      "releaseStage": "released",
+      "summary": "데이터 모델링과 SQL 기본·활용을 객관식 문제로 학습합니다.",
+      "studyMode": "2과목 · 객관식",
+      "mockExam": "50문항 · 90분",
+      "subjectIds": [
+        "data-modeling",
+        "sql-basics"
+      ],
+      "descriptiveSubjectIds": [],
+      "examPolicy": {
+        "policyVersion": "dataq-2026-08-23",
+        "title": "SQLD 실전 모의고사",
+        "durationMinutes": 90,
+        "objectiveCounts": {
+          "data-modeling": 10,
+          "sql-basics": 40
+        },
+        "descriptiveCount": 0,
+        "objectivePoint": 2,
+        "descriptivePoint": 0,
+        "totalQuestions": 50,
+        "totalPoints": 100,
+        "passingScore": 60,
+        "subjectMinimumRate": 40,
+        "practicalMinimumRate": 0,
+        "resultDecimals": 0
+      }
+    },
+    {
+      "examType": "SQLP",
+      "fieldId": "sql",
+      "courseId": "sqlp",
+      "name": "SQLP",
+      "releaseStage": "released",
+      "summary": "SQL 기본부터 고급 활용·튜닝까지 이론과 실전 문제로 학습합니다.",
+      "studyMode": "3과목 · 객관식·서술형",
+      "mockExam": "72문항 · 180분",
+      "subjectIds": [
+        "data-modeling",
+        "sql-basics",
+        "sql-advanced-tuning"
+      ],
+      "descriptiveSubjectIds": [
+        "sql-advanced-tuning"
+      ],
+      "examPolicy": {
+        "policyVersion": "dataq-2026-08-23",
+        "title": "SQLP 실전 모의고사",
+        "durationMinutes": 180,
+        "objectiveCounts": {
+          "data-modeling": 10,
+          "sql-basics": 20,
+          "sql-advanced-tuning": 40
+        },
+        "descriptiveCount": 2,
+        "objectivePoint": 1,
+        "descriptivePoint": 15,
+        "totalQuestions": 72,
+        "totalPoints": 100,
+        "passingScore": 75,
+        "subjectMinimumRate": 40,
+        "practicalMinimumRate": 0,
+        "resultDecimals": 1
+      }
+    },
+    {
+      "examType": "DASP",
+      "fieldId": "data-architecture",
+      "courseId": "dasp",
+      "name": "DAsP",
+      "releaseStage": "released",
+      "summary": "전사아키텍처부터 데이터 모델링까지 데이터아키텍처 기초를 학습합니다.",
+      "studyMode": "4과목 · 객관식",
+      "mockExam": "50문항 · 90분",
+      "subjectIds": [
+        "enterprise-architecture",
+        "data-requirements",
+        "data-standardization",
+        "data-modeling-practice"
+      ],
+      "descriptiveSubjectIds": [],
+      "examPolicy": {
+        "policyVersion": "dataq-2026-08-23",
+        "title": "DAsP 실전 모의고사",
+        "durationMinutes": 90,
+        "objectiveCounts": {
+          "enterprise-architecture": 10,
+          "data-requirements": 10,
+          "data-standardization": 10,
+          "data-modeling-practice": 20
+        },
+        "descriptiveCount": 0,
+        "objectivePoint": 2,
+        "descriptivePoint": 0,
+        "totalQuestions": 50,
+        "totalPoints": 100,
+        "passingScore": 60,
+        "subjectMinimumRate": 40,
+        "practicalMinimumRate": 0,
+        "resultDecimals": 0
+      }
+    },
+    {
+      "examType": "DAP",
+      "fieldId": "data-architecture",
+      "courseId": "dap",
+      "name": "DAP",
+      "releaseStage": "released",
+      "summary": "데이터아키텍처 전 범위와 데이터 모델링 실무를 전문가 수준으로 학습합니다.",
+      "studyMode": "6과목 · 객관식·실기형",
+      "mockExam": "76문항 · 240분",
+      "subjectIds": [
+        "enterprise-architecture",
+        "data-requirements",
+        "data-standardization",
+        "data-modeling-practice",
+        "database-design-and-use",
+        "data-quality-management"
+      ],
+      "descriptiveSubjectIds": [
+        "data-standardization",
+        "data-modeling-practice"
+      ],
+      "examPolicy": {
+        "policyVersion": "dataq-2026-08-23",
+        "title": "DAP 실전 모의고사",
+        "durationMinutes": 240,
+        "objectiveCounts": {
+          "enterprise-architecture": 10,
+          "data-requirements": 10,
+          "data-standardization": 10,
+          "data-modeling-practice": 25,
+          "database-design-and-use": 10,
+          "data-quality-management": 10
+        },
+        "descriptiveCount": 1,
+        "objectivePoint": 0.8,
+        "descriptivePoint": 40,
+        "totalQuestions": 76,
+        "totalPoints": 100,
+        "passingScore": 75,
+        "subjectMinimumRate": 40,
+        "practicalMinimumRate": 40,
+        "resultDecimals": 1
+      }
+    },
+    {
+      "examType": "BAE",
+      "fieldId": "big-data-analysis",
+      "courseId": "bae-written",
+      "name": "빅데이터분석기사 필기",
+      "releaseStage": "released",
+      "summary": "1~4과목 핵심 이론을 학습하고, 전 과목 검수 완료 객관식 문제로 연습합니다.",
+      "studyMode": "1·2·3·4과목 이론 · 전 과목 문제",
+      "mockExam": "모의고사 준비 중",
+      "subjectIds": [
+        "big-data-analysis-planning",
+        "big-data-exploration",
+        "big-data-modeling",
+        "big-data-result-interpretation"
+      ],
+      "releasedSubjectIds": [
+        "big-data-analysis-planning",
+        "big-data-exploration",
+        "big-data-modeling",
+        "big-data-result-interpretation"
+      ],
+      "contentKinds": [
+        "theory",
+        "question"
+      ],
+      "questionSubjectIds": [
+        "big-data-analysis-planning",
+        "big-data-exploration",
+        "big-data-modeling",
+        "big-data-result-interpretation"
+      ],
+      "descriptiveSubjectIds": [],
+      "examPolicy": {
+        "policyVersion": "dataq-bae-written-2022-brochure",
+        "title": "빅데이터분석기사 필기 실전 모의고사",
+        "durationMinutes": 120,
+        "objectiveCounts": {
+          "big-data-analysis-planning": 20,
+          "big-data-exploration": 20,
+          "big-data-modeling": 20,
+          "big-data-result-interpretation": 20
+        },
+        "descriptiveCount": 0,
+        "objectivePoint": 1.25,
+        "descriptivePoint": 0,
+        "totalQuestions": 80,
+        "totalPoints": 100,
+        "passingScore": 60,
+        "subjectMinimumRate": 40,
+        "practicalMinimumRate": 0,
+        "resultDecimals": 2
+      }
+    },
+    {
+      "examType": "IPEW",
+      "fieldId": "information-processing",
+      "courseId": "ipe-written",
+      "name": "정보처리기사 필기",
+      "releaseStage": "released",
+      "summary": "1~5단원 이론과 객관식 문제로 학습합니다.",
+      "studyMode": "1~5단원 · 객관식",
+      "mockExam": "100문항 · 150분",
+      "subjectIds": [
+        "ipe-software-design",
+        "ipe-software-development",
+        "ipe-database-construction",
+        "ipe-programming-language-utilization",
+        "ipe-information-system-construction-management"
+      ],
+      "releasedSubjectIds": [
+        "ipe-software-design",
+        "ipe-software-development",
+        "ipe-database-construction",
+        "ipe-programming-language-utilization",
+        "ipe-information-system-construction-management"
+      ],
+      "contentKinds": [
+        "theory",
+        "question",
+        "mock-exam"
+      ],
+      "questionSubjectIds": [
+        "ipe-software-design",
+        "ipe-software-development",
+        "ipe-database-construction",
+        "ipe-programming-language-utilization",
+        "ipe-information-system-construction-management"
+      ],
+      "descriptiveSubjectIds": [],
+      "examPolicy": {
+        "policyVersion": "qnet-ipe-written-2026",
+        "title": "정보처리기사 필기 실전 모의고사",
+        "durationMinutes": 150,
+        "objectiveCounts": {
+          "ipe-software-design": 20,
+          "ipe-software-development": 20,
+          "ipe-database-construction": 20,
+          "ipe-programming-language-utilization": 20,
+          "ipe-information-system-construction-management": 20
+        },
+        "descriptiveCount": 0,
+        "objectivePoint": 1,
+        "descriptivePoint": 0,
+        "totalQuestions": 100,
+        "totalPoints": 100,
+        "passingScore": 60,
+        "subjectMinimumRate": 40,
+        "practicalMinimumRate": 0,
+        "resultDecimals": 0
+      }
+    },
+    {
+      "examType": "IPEP",
+      "fieldId": "information-processing",
+      "courseId": "ipe-practical",
+      "name": "정보처리기사 실기",
+      "releaseStage": "released",
+      "summary": "코드 추적·SQL·계산·단답형에 필요한 실기 전용 이론과 창작 문제를 학습합니다.",
+      "studyMode": "정보처리실무 · 필답형",
+      "mockExam": "단답형 20문항 · 150분",
+      "subjectIds": [
+        "ipe-software-design",
+        "ipe-software-development",
+        "ipe-database-construction",
+        "ipe-programming-language-utilization",
+        "ipe-information-system-construction-management",
+        "ipe-practical-work"
+      ],
+      "descriptiveSubjectIds": [
+        "ipe-practical-work"
+      ],
+      "examPolicy": {
+        "policyVersion": "ipep-short-answer-2026-09-v1",
+        "title": "정보처리기사 실기 단답형 모의고사",
+        "durationMinutes": 150,
+        "objectiveCounts": {},
+        "descriptiveCount": 20,
+        "objectivePoint": 0,
+        "descriptivePoint": 5,
+        "totalQuestions": 20,
+        "totalPoints": 100,
+        "passingScore": 60,
+        "subjectMinimumRate": 0,
+        "practicalMinimumRate": 0,
+        "resultDecimals": 0
+      },
+      "contentKinds": [
+        "theory",
+        "question",
+        "mock-exam"
+      ],
+      "releasedSubjectIds": [
+        "ipe-practical-work"
+      ],
+      "questionSubjectIds": [
+        "ipe-practical-work"
+      ]
+    },
+    {
+      "examType": "ISEW",
+      "fieldId": "information-security",
+      "courseId": "ise-written",
+      "name": "정보보안기사 필기",
+      "releaseStage": "released",
+      "summary": "시스템·네트워크·애플리케이션 보안부터 암호·접근통제, 정보보호 관리·법규까지 학습합니다.",
+      "studyMode": "필기 5과목 이론 · 시스템보안 문제",
+      "mockExam": "모의고사 준비 중",
+      "subjectIds": [
+        "ise-system-security",
+        "ise-network-security",
+        "ise-application-security",
+        "ise-security-general",
+        "ise-security-management-law"
+      ],
+      "releasedSubjectIds": [
+        "ise-system-security",
+        "ise-network-security",
+        "ise-application-security",
+        "ise-security-general",
+        "ise-security-management-law"
+      ],
+      "contentKinds": [
+        "theory",
+        "question"
+      ],
+      "questionSubjectIds": [
+        "ise-system-security"
+      ],
+      "descriptiveSubjectIds": [],
+      "examPolicy": {
+        "policyVersion": "kca-ise-written-2023-2026",
+        "title": "정보보안기사 필기 실전 모의고사",
+        "durationMinutes": 150,
+        "objectiveCounts": {
+          "ise-system-security": 20,
+          "ise-network-security": 20,
+          "ise-application-security": 20,
+          "ise-security-general": 20,
+          "ise-security-management-law": 20
+        },
+        "descriptiveCount": 0,
+        "objectivePoint": 1,
+        "descriptivePoint": 0,
+        "totalQuestions": 100,
+        "totalPoints": 100,
+        "passingScore": 60,
+        "subjectMinimumRate": 40,
+        "practicalMinimumRate": 0,
+        "resultDecimals": 0
+      }
+    },
+    {
+      "examType": "ISEP",
+      "fieldId": "information-security",
+      "courseId": "ise-practical",
+      "name": "정보보안기사 실기",
+      "releaseStage": "intake",
+      "summary": "정보보안 실무 이론과 필답형 문제를 준비합니다.",
+      "studyMode": "정보보안 실무 · 필답형",
+      "mockExam": "모의고사 준비 중",
+      "subjectIds": [
+        "ise-practical-work"
+      ],
+      "releasedSubjectIds": [],
+      "contentKinds": [],
+      "questionSubjectIds": [],
+      "descriptiveSubjectIds": [
+        "ise-practical-work"
+      ],
+      "examPolicy": null
+    }
+  ],
+  "localPracticeCourses": [
+    {
+      "courseId": "bae-practical",
+      "fieldId": "big-data-analysis",
+      "engineId": "certification",
+      "capability": "local-practice",
+      "name": "빅데이터분석기사 실기",
+      "summary": "실기 작업형 문제와 풀이를 학습합니다.",
+      "section": "type-1",
+      "sectionTitle": "작업형 제1유형",
+      "releaseKey": "bae-practical"
+    }
+  ]
+}

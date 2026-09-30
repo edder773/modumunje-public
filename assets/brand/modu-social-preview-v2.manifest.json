@@ -1,0 +1,32 @@
+{
+  "schemaVersion": 1,
+  "assetVersion": "modu-social-preview-v2",
+  "brand": "모두의 문제집",
+  "purpose": "Open Graph and Twitter social preview",
+  "publicPath": "/brand/modu-social-preview-v2.jpg",
+  "compatibilityPath": "/og.jpg",
+  "sourcePath": "assets/brand/modu-social-preview-v2-source.png",
+  "dimensions": {
+    "width": 1730,
+    "height": 909
+  },
+  "format": "image/jpeg",
+  "bytes": 388710,
+  "sha256": "3be25d9c22891bf625137f226646fb9de57e06663cf8e9a52b16a63291d4abae",
+  "sourceSha256": "b06c160924e391068a7e3532c537c3da384c35580babba9431e4c3f177811e6e",
+  "visibleText": [
+    "모두의 문제집",
+    "문제 풀이 · 오답 복습 · 모의시험",
+    "이론 학습",
+    "문제 풀이",
+    "오답 복습",
+    "모의시험"
+  ],
+  "forbiddenText": "배움집",
+  "generation": {
+    "tool": "OpenAI built-in image generation",
+    "mode": "text-localization edit",
+    "reference": "previous repository Open Graph image",
+    "postprocessing": "JPEG quality 86; no compositional edits after generation"
+  }
+}
