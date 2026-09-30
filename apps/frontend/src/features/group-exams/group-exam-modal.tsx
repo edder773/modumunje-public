@@ -78,7 +78,7 @@ export function GroupExamModal({
   }}>
     <section ref={dialogRef} className={styles.modal} role="dialog" aria-modal="true" aria-labelledby={titleId} tabIndex={-1}>
       <header><h3 id={titleId}>{title}</h3><button data-group-modal-close type="button" className={styles.iconButton} aria-label={`${title} 닫기`} disabled={closeDisabled} onClick={onClose}>×</button></header>
-      {children}
+      <div className={styles.modalContent}>{children}</div>
     </section>
   </div>;
 }

@@ -11,7 +11,7 @@ export class GroupExamLobbyRepository extends DatabaseRepository {
         g.settings_json, g.status, g.revision, g.created_at, g.updated_at,
         m.public_name, m.membership_epoch, m.status AS member_status, (g.owner_user_key = ?) AS is_owner,
         (SELECT COUNT(*) FROM study_group_members x WHERE x.group_id = g.id AND x.status = 'active') AS active_members,
-        (SELECT COUNT(*) FROM study_group_invites i WHERE i.group_id = g.id AND i.status = 'active' AND i.expires_at > CURRENT_TIMESTAMP) AS reserved_invites
+        (SELECT COUNT(*) FROM study_group_invites i WHERE i.group_id = g.id AND i.status = 'active' AND i.reusable = 0 AND i.expires_at > CURRENT_TIMESTAMP) AS reserved_invites
         FROM study_groups g JOIN study_group_members m ON m.group_id = g.id AND m.user_key = ?
         WHERE g.id = ? AND g.status = 'active' AND m.status = 'active'`).bind(userKey, userKey, groupId),
       db.prepare(`SELECT slot_no, source, status, reserved_run_id FROM study_group_quota_slots
@@ -43,7 +43,7 @@ export class GroupExamLobbyRepository extends DatabaseRepository {
       db.prepare(`SELECT g.id,g.name,g.member_limit,g.admin_question_count_override,g.settings_json,g.status,g.revision,g.created_at,g.updated_at,
         m.public_name,m.membership_epoch,(g.owner_user_key=?) AS is_owner,
         (SELECT COUNT(*) FROM study_group_members x WHERE x.group_id=g.id AND x.status='active') AS active_members,
-        (SELECT COUNT(*) FROM study_group_invites i WHERE i.group_id=g.id AND i.status='active' AND i.expires_at>CURRENT_TIMESTAMP) AS reserved_invites,
+        (SELECT COUNT(*) FROM study_group_invites i WHERE i.group_id=g.id AND i.status='active' AND i.reusable=0 AND i.expires_at>CURRENT_TIMESTAMP) AS reserved_invites,
         (SELECT r.id FROM study_group_exam_runs r WHERE r.group_id=g.id ORDER BY r.created_at DESC LIMIT 1) AS recent_run_id,
         (SELECT r.status FROM study_group_exam_runs r WHERE r.group_id=g.id ORDER BY r.created_at DESC LIMIT 1) AS recent_run_status
         FROM study_groups g JOIN study_group_members m ON m.group_id=g.id AND m.user_key=? AND m.status='active'
@@ -52,7 +52,7 @@ export class GroupExamLobbyRepository extends DatabaseRepository {
       db.prepare(`${selected} SELECT g.id,g.name,g.member_limit,g.admin_question_count_override,g.settings_json,g.status,g.revision,g.created_at,g.updated_at,
         m.public_name,m.membership_epoch,m.status AS member_status,(g.owner_user_key=?) AS is_owner,
         (SELECT COUNT(*) FROM study_group_members x WHERE x.group_id=g.id AND x.status='active') AS active_members,
-        (SELECT COUNT(*) FROM study_group_invites i WHERE i.group_id=g.id AND i.status='active' AND i.expires_at>CURRENT_TIMESTAMP) AS reserved_invites
+        (SELECT COUNT(*) FROM study_group_invites i WHERE i.group_id=g.id AND i.status='active' AND i.reusable=0 AND i.expires_at>CURRENT_TIMESTAMP) AS reserved_invites
         FROM selected s JOIN study_groups g ON g.id=s.id JOIN study_group_members m ON m.group_id=g.id AND m.user_key=?`).bind(userKey,userKey,userKey),
       db.prepare(`${selected} SELECT slot_no,source,status,reserved_run_id FROM study_group_quota_slots
         WHERE group_id=(SELECT id FROM selected) AND date_key=? ORDER BY slot_no`).bind(userKey,dateKey),

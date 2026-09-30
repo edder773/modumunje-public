@@ -24,7 +24,7 @@ test("the deployed client replays an empty edge response once with the same oper
   await page.goto(`/groups/exams/${runId}`);
   await page.getByRole("radio").nth(1).check();
   await page.getByRole("button", { name: "다음 문항" }).click();
-  await expect(page.getByText("서버 저장을 확인했습니다.")).toBeVisible();
+  await expect(page.getByText("✓ 답안을 저장했습니다.")).toBeVisible();
   expect(attempts).toHaveLength(2);
   expect(attempts[1].correlation).toBe(attempts[0].correlation);
   expect(attempts[1].body).toEqual(attempts[0].body);
@@ -41,12 +41,12 @@ test("a failed transport keeps the exact queued operation across reload and neve
   await page.goto(`/groups/exams/${runId}`);
   await page.getByRole("radio").nth(1).check();
   await page.getByRole("button", { name: "다음 문항" }).click();
-  await expect(page.getByText("전송 결과를 확인하지 못했습니다. 같은 작업 키로 다시 시도할 수 있습니다.")).toBeVisible();
-  await expect(page.getByText("서버 저장을 확인했습니다.")).toHaveCount(0);
+  await expect(page.getByText("연결이 끊겨 저장 여부를 확인하지 못했습니다. 다시 시도해 주세요.")).toBeVisible();
+  await expect(page.getByText("✓ 답안을 저장했습니다.")).toHaveCount(0);
   expect(attempts).toHaveLength(2);
   recover = true;
   await page.reload();
-  await expect(page.getByText("재전송 결과와 최신 서버 진행 상태를 확인했습니다.")).toBeVisible();
+  await expect(page.getByText("✓ 답안을 저장했습니다.")).toBeVisible();
   expect(attempts).toHaveLength(3);
   expect(attempts[2].body).toEqual(attempts[0].body);
   expect(attempts[2].correlation).not.toBe("");
@@ -71,11 +71,11 @@ test("two tabs atomically keep the first queued operation and expose the losing 
   await page.getByRole("button", { name: "다음 문항" }).click();
   await expect.poll(() => attempts.length).toBe(1);
   await second.getByRole("button", { name: "다음 문항" }).click();
-  await expect(second.getByText(/다른 탭에 보관된 작업과 답안이 다릅니다/u)).toBeVisible();
+  await expect(second.getByText(/다른 화면에서 답안을 변경했습니다/u)).toBeVisible();
   expect(attempts).toHaveLength(1);
   await expect(second.getByText("내구성 문항 1")).toBeVisible();
   release();
-  await expect(page.getByText("서버 저장을 확인했습니다.")).toBeVisible();
+  await expect(page.getByText("✓ 답안을 저장했습니다.")).toBeVisible();
   await second.close();
 });
 
@@ -99,7 +99,7 @@ test("an expired cross-tab lease is reclaimed once instead of leaving the runner
     db.close();
   }, { runId });
   await page.reload();
-  await expect(page.getByText("재전송 결과와 최신 서버 진행 상태를 확인했습니다.")).toBeVisible({ timeout: 5_000 });
+  await expect(page.getByText("✓ 답안을 저장했습니다.")).toBeVisible({ timeout: 5_000 });
   expect(attempts).toHaveLength(1);
   expect(attempts[0].body.idempotencyKey).toBe("question-advance:lease-recovery");
 });
@@ -117,7 +117,7 @@ test("a late progress conflict restores the authoritative server question and ke
   await page.getByRole("button", { name: "다음 문항" }).click();
   await expect(page.getByText("내구성 문항 2")).toBeVisible();
   await expect(page.getByText(/서버 문항으로 돌아왔습니다/u)).toBeVisible();
-  await expect(page.getByRole("button", { name: "같은 작업 키로 다시 시도" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "다시 시도" })).toBeVisible();
 });
 
 test("the question deadline triggers one authoritative readback without a client mutation", async ({ page }) => {
@@ -152,7 +152,7 @@ test("a sealed legacy active run remains usable on the dedicated route", async (
   await expect(page.getByRole("button", { name: "응시 완료" })).toBeVisible();
   await page.getByRole("radio").first().check();
   await page.getByRole("button", { name: "답안 저장" }).click();
-  await expect(page.getByText("서버 저장을 확인했습니다.")).toBeVisible();
+  await expect(page.getByText("✓ 답안을 저장했습니다.")).toBeVisible();
   expect(actions).toEqual(["answer-save"]);
 });
 
@@ -170,7 +170,7 @@ test("a delayed ACK cannot delete a newer operation at the same queue position",
     delayed.postMessage({ kind: "ack", queueId: `${targetRun}:0:question-advance`, idempotencyKey: "question-advance:old", payloadDigest: "old-digest" });
     window.setTimeout(() => delayed.close(), 100);
   }, { runId });
-  await expect(page.getByText(/지연된 확인 응답을 무시했습니다/u)).toBeVisible();
+  await expect(page.getByText(/다른 화면에서 응시 상태가 변경되었습니다/u)).toBeVisible();
   const preserved = await page.evaluate(async ({ runId: targetRun }) => {
     const db = await new Promise<IDBDatabase>((resolve, reject) => { const request = indexedDB.open("modumunje-group-exam-v1", 1); request.onsuccess = () => resolve(request.result); request.onerror = () => reject(request.error); });
     const tx = db.transaction(["mutations", "drafts"], "readonly"); const mutation = tx.objectStore("mutations").get(`${targetRun}:0:question-advance`); const draft = tx.objectStore("drafts").get(`${targetRun}:0`);
@@ -193,7 +193,7 @@ test("same-key response-loss replay adopts a newer authoritative server position
     return route.fulfill({status:404,json:{code:"UNEXPECTED_REQUEST"}});
   });
   await page.goto(`/groups/exams/${runId}`);await page.getByRole("radio").first().check();await page.getByRole("button",{name:"다음 문항"}).click();
-  await expect(page.getByText(/전송 결과를 확인하지 못했습니다/u)).toBeVisible();
+  await expect(page.getByText(/연결이 끊겨 저장 여부를 확인하지 못했습니다/u)).toBeVisible();
   serverPosition=2;recover=true;await page.reload();
   await expect(page.getByText("내구성 문항 3")).toBeVisible();
   await expect(page.getByText("내구성 문항 2")).toHaveCount(0);
@@ -205,17 +205,17 @@ test("a replay ACK followed by current 503 never claims stale saved state and ca
   await page.route("**/api/group-exams**",async route=>{const request=route.request();const url=new URL(request.url());if(request.method()==="POST"){postAck=true;return route.fulfill({status:200,json:{saved:true,advanced:true,position:1,progressRevision:1,publicQuestionWindow:[question(1)]}});}if(url.searchParams.get("scope")==="current"){if(postAck&&!allowReadback)return route.fulfill({status:503,json:{code:"READBACK_UNAVAILABLE"}});return route.fulfill({status:200,json:current(allowReadback?2:0,allowReadback?2:0)});}return route.fulfill({status:404,json:{code:"UNEXPECTED"}});});
   await page.goto(`/groups/exams/${runId}`);await expect(page.getByText("내구성 문항 1")).toBeVisible();
   await page.evaluate(async({runId:targetRun})=>{const db=await new Promise<IDBDatabase>((resolve,reject)=>{const request=indexedDB.open("modumunje-group-exam-v1",1);request.onsuccess=()=>resolve(request.result);request.onerror=()=>reject(request.error);});const tx=db.transaction("mutations","readwrite");tx.objectStore("mutations").put({queueId:`${targetRun}:0:question-advance`,runId:targetRun,idempotencyKey:"question-advance:replay-readback",action:"question-advance",body:{action:"question-advance",runId:targetRun,position:0,answers:[0],expectedAnswerRevision:0,expectedProgressRevision:0,idempotencyKey:"question-advance:replay-readback"},payloadDigest:"replay-readback",createdAt:Date.now(),attemptCount:1,state:"pending"});await new Promise<void>((resolve,reject)=>{tx.oncomplete=()=>resolve();tx.onerror=()=>reject(tx.error);});db.close();},{runId});
-  await page.reload();await expect(page.getByText(/서버 작업은 확인됐지만 최신 진행 상태를 읽지 못했습니다/u).first()).toBeVisible();
-  await expect(page.getByText("내구성 문항 2")).toHaveCount(0);await expect(page.getByText("서버 저장을 확인했습니다.")).toHaveCount(0);await expect(page.getByRole("button",{name:"같은 작업 키로 다시 시도"})).toHaveCount(0);
-  allowReadback=true;await page.getByRole("button",{name:"서버 상태 다시 확인"}).click();await expect(page.getByText("내구성 문항 3")).toBeVisible();
+  await page.reload();await expect(page.getByText(/답안은 저장됐지만 다음 문항을 불러오지 못했습니다/u).first()).toBeVisible();
+  await expect(page.getByText("내구성 문항 2")).toHaveCount(0);await expect(page.getByText("✓ 답안을 저장했습니다.")).toHaveCount(0);await expect(page.getByRole("button",{name:"다시 시도"})).toHaveCount(0);
+  allowReadback=true;await page.getByRole("button",{name:"다시 불러오기"}).click();await expect(page.getByText("내구성 문항 3")).toBeVisible();
 });
 
 test("legacy save ACK plus current 503 remains acknowledged and offers readback retry", async ({ page }) => {
   let postAck=false;let allowReadback=false;
   await page.route("**/api/group-exams**",async route=>{const request=route.request();const url=new URL(request.url());if(request.method()==="POST"){postAck=true;return route.fulfill({status:200,json:{saved:true,revision:1}});}if(url.searchParams.get("scope")==="current"){if(postAck&&!allowReadback)return route.fulfill({status:503,json:{code:"READBACK_UNAVAILABLE"}});const position=allowReadback?1:0;return route.fulfill({status:200,json:{serverNow:new Date().toISOString(),phase:"running",participantStatus:"in_progress",run:{id:runId,status:"running",questionCount:3},question:question(position),publicQuestionWindow:[]}});}return route.fulfill({status:404,json:{code:"UNEXPECTED"}});});
   await page.goto(`/groups/exams/${runId}`);await page.getByRole("radio").first().check();await page.getByRole("button",{name:"답안 저장"}).click();
-  await expect(page.getByText(/서버 작업은 확인됐지만 최신 진행 상태를 읽지 못했습니다/u).first()).toBeVisible();await expect(page.getByText(/전송 결과를 확인하지 못했습니다/u)).toHaveCount(0);await expect(page.getByRole("button",{name:"같은 작업 키로 다시 시도"})).toHaveCount(0);
-  allowReadback=true;await page.getByRole("button",{name:"서버 상태 다시 확인"}).click();await expect(page.getByText("내구성 문항 2")).toBeVisible();
+  await expect(page.getByText(/답안은 저장됐지만 다음 문항을 불러오지 못했습니다/u).first()).toBeVisible();await expect(page.getByText(/연결이 끊겨 저장 여부를 확인하지 못했습니다/u)).toHaveCount(0);await expect(page.getByRole("button",{name:"다시 시도"})).toHaveCount(0);
+  allowReadback=true;await page.getByRole("button",{name:"다시 불러오기"}).click();await expect(page.getByText("내구성 문항 2")).toBeVisible();
 });
 
 test("matching broadcast ACK with failed readback exits syncing and remains manually recoverable",async({page})=>{
@@ -223,7 +223,7 @@ test("matching broadcast ACK with failed readback exits syncing and remains manu
   await page.unroute("**/api/group-exams**");await page.route("**/api/group-exams**",async route=>{const url=new URL(route.request().url());if(url.searchParams.get("scope")==="current"&&failReadback)return route.fulfill({status:503,json:{code:"READBACK_UNAVAILABLE"}});return route.fulfill({status:200,json:current(1,1)});});
   await page.evaluate(async({runId:targetRun})=>{const db=await new Promise<IDBDatabase>((resolve,reject)=>{const request=indexedDB.open("modumunje-group-exam-v1",1);request.onsuccess=()=>resolve(request.result);request.onerror=()=>reject(request.error);});const tx=db.transaction("mutations","readwrite");tx.objectStore("mutations").put({queueId:`${targetRun}:0:question-advance`,runId:targetRun,idempotencyKey:"question-advance:broadcast",action:"question-advance",body:{},payloadDigest:"broadcast-digest",createdAt:Date.now(),attemptCount:1,state:"inflight"});await new Promise<void>((resolve,reject)=>{tx.oncomplete=()=>resolve();tx.onerror=()=>reject(tx.error);});db.close();},{runId});
   failReadback=true;await page.evaluate(({runId:targetRun})=>{const channel=new BroadcastChannel(`group-exam:${targetRun}`);channel.postMessage({kind:"ack",queueId:`${targetRun}:0:question-advance`,idempotencyKey:"question-advance:broadcast",payloadDigest:"broadcast-digest"});setTimeout(()=>channel.close(),100);},{runId});
-  await expect(page.getByText(/서버 작업은 확인됐지만 최신 진행 상태를 읽지 못했습니다/u).first()).toBeVisible();await expect(page.getByText("내구성 문항 1")).toHaveCount(0);failReadback=false;await page.getByRole("button",{name:"서버 상태 다시 확인"}).click();await expect(page.getByText("내구성 문항 2")).toBeVisible();
+  await expect(page.getByText(/답안은 저장됐지만 다음 문항을 불러오지 못했습니다/u).first()).toBeVisible();await expect(page.getByText("내구성 문항 1")).toHaveCount(0);failReadback=false;await page.getByRole("button",{name:"다시 불러오기"}).click();await expect(page.getByText("내구성 문항 2")).toBeVisible();
 });
 
 test("countdown zero, focus, and visibility share one in-flight current read",async({page})=>{
@@ -235,5 +235,5 @@ test("countdown zero, focus, and visibility share one in-flight current read",as
 test("a persisted conflict restores explicit retry controls without automatic POST loop",async({page})=>{
   let posts=0;await install(page,async route=>{posts+=1;await route.fulfill({status:500,json:{code:"UNEXPECTED_POST"}});});await page.goto(`/groups/exams/${runId}`);await expect(page.getByText("내구성 문항 1")).toBeVisible();
   await page.evaluate(async({runId:targetRun})=>{const db=await new Promise<IDBDatabase>((resolve,reject)=>{const request=indexedDB.open("modumunje-group-exam-v1",1);request.onsuccess=()=>resolve(request.result);request.onerror=()=>reject(request.error);});const tx=db.transaction(["mutations","drafts"],"readwrite");tx.objectStore("mutations").put({queueId:`${targetRun}:0:question-advance`,runId:targetRun,idempotencyKey:"question-advance:conflict",action:"question-advance",body:{},payloadDigest:"conflict",createdAt:Date.now(),attemptCount:1,state:"conflict"});tx.objectStore("drafts").put({key:`${targetRun}:0`,runId:targetRun,position:0,answers:[1],updatedAt:Date.now()});await new Promise<void>((resolve,reject)=>{tx.oncomplete=()=>resolve();tx.onerror=()=>reject(tx.error);});db.close();},{runId});
-  await page.reload();await expect(page.getByText(/미확정 작업입니다/u)).toBeVisible();await expect(page.getByRole("button",{name:"같은 작업 키로 다시 시도"})).toBeVisible();await expect(page.getByRole("button",{name:/보관 작업 취소/u})).toBeVisible();await page.waitForTimeout(1_500);expect(posts).toBe(0);
+  await page.reload();await expect(page.getByText(/다른 화면에서 응시 상태가 변경되었습니다/u)).toBeVisible();await expect(page.getByRole("button",{name:"다시 시도"})).toBeVisible();await expect(page.getByRole("button",{name:/최신 문항으로 돌아가기/u})).toBeVisible();await page.waitForTimeout(1_500);expect(posts).toBe(0);
 });

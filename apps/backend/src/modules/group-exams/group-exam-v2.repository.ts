@@ -92,6 +92,32 @@ export class GroupExamV2Repository extends GroupExamRepository {
   contractStatement(contract: ContractV2, timestamp: string) {
     return this.insert("study_group_exam_run_contract_v2", { ...contract, created_at: timestamp }, "EXISTS(SELECT 1 FROM study_group_exam_runs WHERE id = ?)", [contract.run_id]);
   }
+  async preparationSnapshot(runId:string) {
+    const db=this.connection();const [run,contract,questions]=await db.batch([
+      db.prepare("SELECT * FROM study_group_exam_runs WHERE id=?").bind(runId),
+      db.prepare("SELECT * FROM study_group_exam_run_contract_v2 WHERE run_id=?").bind(runId),
+      db.prepare("SELECT time_limit_seconds FROM study_group_exam_question_public WHERE run_id=? ORDER BY position").bind(runId),
+    ]);
+    return {run:rows(run as D1Result<RunRow>)[0]??null,contract:rows(contract as D1Result<ContractV2>)[0]??null,questions:rows(questions as D1Result<{time_limit_seconds:number}>)};
+  }
+  async armPreparedRun(run:RunRow,startAt:string,finalDeadline:string,items:Array<{opensAt:string;deadlineAt:string}>) {
+    const db=this.connection();
+    const guard="EXISTS(SELECT 1 FROM study_group_exam_runs r JOIN study_group_exam_run_contract_v2 c ON c.run_id=r.id WHERE r.id=? AND r.status='running' AND json_extract(c.selection_json,'$.countdownStatus')='preparing' AND NOT EXISTS(SELECT 1 FROM study_group_exam_participant_progress p WHERE p.run_id=r.id AND (p.revision<>0 OR p.finished_at_utc IS NOT NULL)))";
+    const result=await db.batch([
+      db.prepare(`UPDATE study_group_exam_runs SET actual_started_at_utc=?,final_deadline_at_utc=?,revision=revision+1 WHERE id=? AND ${guard}`).bind(startAt,finalDeadline,run.id,run.id),
+      ...items.map((item,position)=>db.prepare(`UPDATE study_group_exam_question_public SET opens_at_utc=?,deadline_at_utc=? WHERE run_id=? AND position=? AND ${guard}`).bind(item.opensAt,item.deadlineAt,run.id,position,run.id)),
+      db.prepare(`UPDATE study_group_exam_participant_progress SET started_at_utc=?,current_opened_at_utc=?,current_deadline_at_utc=? WHERE run_id=? AND revision=0 AND finished_at_utc IS NULL AND ${guard}`).bind(startAt,startAt,items[0].deadlineAt,run.id,run.id),
+      db.prepare(`UPDATE study_group_exam_run_contract_v2 SET selection_json=json_set(selection_json,'$.countdownStatus','armed') WHERE run_id=? AND ${guard}`).bind(run.id,run.id),
+    ]);
+    return Number(result[0].meta.changes)>0;
+  }
+  async recoverPreparedRun(run:RunRow,now:Date) {
+    const contract=await this.contract(run.id);
+    if(!contract || JSON.parse(contract.selection_json).countdownStatus!=="preparing")return;
+    const startAt=new Date(now.getTime()+5_000);let cursor=startAt.getTime();
+    const items=(await this.questionsForRun(run.id)).map(question=>{const opensAt=new Date(cursor).toISOString();cursor+=question.time_limit_seconds*1_000;return {opensAt,deadlineAt:new Date(cursor).toISOString()};});
+    if(items.length)await this.armPreparedRun(run,startAt.toISOString(),new Date(cursor).toISOString(),items);
+  }
   async activateV2(run: RunRow, contract: ContractV2, questions: SelectedV2[], participants: MemberRow[], timestamp: string, finalDeadline: string) {
     const execution = crypto.randomUUID();
     const guard = "EXISTS(SELECT 1 FROM study_group_exam_runs WHERE id = ? AND status = 'running' AND lease_owner = ?)";

@@ -65,10 +65,10 @@ test("a successful start opens the countdown and reveals the next question only 
   await page.getByRole("button", { name: "다음 문항" }).click();
   await expect(page.getByText("공개 문항 1")).toBeVisible();
   await expect(page.getByText("공개 문항 2")).toHaveCount(0);
-  await expect(page.getByText("동기화 중입니다. 확인 전에는 다음으로 다시 이동할 수 없습니다.")).toBeVisible();
+  await expect(page.getByText("답안을 저장하고 있습니다…")).toBeVisible();
   await expect(page.getByRole("button", { name: "다음 문항" })).toBeDisabled();
   expect(posts).toHaveLength(1); expect(currentGets).toBe(currentBeforeAdvance);
-  releaseAdvance(); await expect(page.getByText("서버 저장을 확인했습니다.")).toBeVisible();
+  releaseAdvance(); await expect(page.getByText("✓ 답안을 저장했습니다.")).toBeVisible();
   await expect(page.getByText("공개 문항 2")).toBeVisible();
   await page.getByRole("radio").first().check();
   await expect(page.getByRole("radio").first()).toBeChecked();

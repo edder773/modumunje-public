@@ -118,6 +118,7 @@ export const studyGroupMembershipEvents = sqliteTable("study_group_membership_ev
 ]);
 
 export const studyGroupInvites = sqliteTable("study_group_invites", {
+  reusable: integer("reusable").notNull().default(0),
   id: text("id").primaryKey(),
   groupId: text("group_id").notNull().references(() => studyGroups.id, { onDelete: "cascade" }),
   tokenDigest: text("token_digest").notNull(),

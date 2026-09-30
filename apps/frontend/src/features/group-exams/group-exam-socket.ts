@@ -1,5 +1,5 @@
 export type GroupSocketStatus = "connecting" | "connected" | "offline";
-type Options = { groupId?:string; runId?:string; onInvalidate:()=>void; onStatus:(status:GroupSocketStatus)=>void };
+type Options = { groupId?:string; runId?:string; onInvalidate:()=>void; onReady?:(current:Record<string,unknown>)=>void; onStatus:(status:GroupSocketStatus)=>void };
 type Pending = { resolve:(response:Response)=>void; reject:(error:Error)=>void; timer:number; cleanup:()=>void };
 const sessions = new Set<GroupSocket>();
 class GroupSocket {
@@ -27,7 +27,7 @@ class GroupSocket {
       if(frame.type==="ready"){
         window.clearTimeout(opening);this.ready=true;this.failures=0;this.options.onStatus("connected");
         this.heartbeat=window.setInterval(()=>{if(socket.readyState===WebSocket.OPEN)socket.send(JSON.stringify({type:"ping"}));},1_000);
-        this.options.onInvalidate();
+        if(this.options.onReady&&frame.current)this.options.onReady(frame.current as Record<string,unknown>);else this.options.onInvalidate();
       }else if(frame.type==="reconnect"){socket.close();}
       else if(frame.type==="invalidate"){this.options.onInvalidate();}
       else if(frame.type==="response"){
@@ -50,7 +50,7 @@ class GroupSocket {
   }
   request(path:string,method:string,body:Record<string,unknown>,init?:RequestInit):Promise<Response>{
     // A connection serializes mutations and reads. Retry uses the caller's original operation key.
-    const task=this.tail.catch(()=>undefined).then(()=>new Promise<Response>((resolve,reject)=>{
+    const execute=()=>new Promise<Response>((resolve,reject)=>{
       if(init?.signal?.aborted){reject(init.signal.reason);return;}
       if(!this.ready||!this.socket){reject(new TypeError("WebSocket not ready"));return;}
       const id=crypto.randomUUID();
@@ -59,7 +59,9 @@ class GroupSocket {
       const timer=window.setTimeout(()=>{this.pending.delete(id);cleanup();reject(new TypeError("WebSocket response timeout"));this.socket?.close();},7_000);
       this.pending.set(id,{resolve,reject,timer,cleanup});init?.signal?.addEventListener("abort",abort,{once:true});
       try{this.socket.send(JSON.stringify({type:"request",id,path,method,body,idempotencyKey:body.idempotencyKey??new Headers(init?.headers).get("idempotency-key")}));}catch{window.clearTimeout(timer);this.pending.delete(id);cleanup();reject(new TypeError("WebSocket send failed"));this.socket.close();}
-    }));this.tail=task;return task;
+    });
+    if(method!=="POST"||body.action==="presence-heartbeat")return execute();
+    const task=this.tail.catch(()=>undefined).then(execute);this.tail=task;return task;
   }
   stop(){this.stopped=true;sessions.delete(this);window.removeEventListener("online",this.online);window.clearTimeout(this.reconnect);window.clearInterval(this.heartbeat);this.socket?.close();}
 }

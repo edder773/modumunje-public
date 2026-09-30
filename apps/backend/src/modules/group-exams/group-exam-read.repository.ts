@@ -26,6 +26,7 @@ export type MemberRow = {
 };
 
 export type InviteRow = {
+  reusable?: number;
   id: string;
   group_id: string;
   token_digest: string;
@@ -122,7 +123,7 @@ export class GroupExamReadRepository extends DatabaseRepository {
           g.settings_json, g.status, g.revision, g.created_at, g.updated_at,
           m.public_name, m.membership_epoch, (g.owner_user_key = ?) AS is_owner,
           (SELECT COUNT(*) FROM study_group_members x WHERE x.group_id = g.id AND x.status = 'active') AS active_members,
-          (SELECT COUNT(*) FROM study_group_invites i WHERE i.group_id = g.id AND i.status = 'active' AND i.expires_at > CURRENT_TIMESTAMP) AS reserved_invites,
+          (SELECT COUNT(*) FROM study_group_invites i WHERE i.group_id = g.id AND i.status = 'active' AND i.reusable = 0 AND i.expires_at > CURRENT_TIMESTAMP) AS reserved_invites,
           (SELECT r.id FROM study_group_exam_runs r WHERE r.group_id = g.id ORDER BY r.created_at DESC LIMIT 1) AS recent_run_id,
           (SELECT r.status FROM study_group_exam_runs r WHERE r.group_id = g.id ORDER BY r.created_at DESC LIMIT 1) AS recent_run_status
         FROM study_groups g
@@ -144,7 +145,7 @@ export class GroupExamReadRepository extends DatabaseRepository {
         m.public_name, m.membership_epoch, m.status AS member_status,
         (g.owner_user_key = ?) AS is_owner,
         (SELECT COUNT(*) FROM study_group_members x WHERE x.group_id = g.id AND x.status = 'active') AS active_members,
-        (SELECT COUNT(*) FROM study_group_invites i WHERE i.group_id = g.id AND i.status = 'active' AND i.expires_at > CURRENT_TIMESTAMP) AS reserved_invites
+        (SELECT COUNT(*) FROM study_group_invites i WHERE i.group_id = g.id AND i.status = 'active' AND i.reusable = 0 AND i.expires_at > CURRENT_TIMESTAMP) AS reserved_invites
       FROM study_groups g
       JOIN study_group_members m ON m.group_id = g.id AND m.user_key = ?
       WHERE g.id = ? AND g.status = 'active' AND m.status = 'active'
@@ -208,7 +209,7 @@ export class GroupExamReadRepository extends DatabaseRepository {
   async activeInviteCount(groupId: string, timestamp: string) {
     const row = await this.connection().prepare(`
       SELECT COUNT(*) AS count FROM study_group_invites
-      WHERE group_id = ? AND status = 'active' AND expires_at > ?
+      WHERE group_id = ? AND status = 'active' AND reusable = 0 AND expires_at > ?
     `).bind(groupId, timestamp).first<{ count: number }>();
     return Number(row?.count ?? 0);
   }
@@ -331,7 +332,7 @@ export class GroupExamReadRepository extends DatabaseRepository {
         m.public_name, m.membership_epoch, m.status AS member_status,
         (g.owner_user_key = ?) AS is_owner,
         (SELECT COUNT(*) FROM study_group_members x WHERE x.group_id = g.id AND x.status = 'active') AS active_members,
-        (SELECT COUNT(*) FROM study_group_invites i WHERE i.group_id = g.id AND i.status = 'active' AND i.expires_at > CURRENT_TIMESTAMP) AS reserved_invites
+        (SELECT COUNT(*) FROM study_group_invites i WHERE i.group_id = g.id AND i.status = 'active' AND i.reusable = 0 AND i.expires_at > CURRENT_TIMESTAMP) AS reserved_invites
         FROM study_groups g JOIN study_group_members m ON m.group_id = g.id AND m.user_key = ?
         WHERE g.id = ? AND g.status = 'active' AND m.status = 'active'`).bind(userKey, userKey, groupId),
       db.prepare(`SELECT r.*, CASE WHEN v.run_id IS NULL THEN 0 ELSE 1 END AS has_v2_contract
@@ -529,7 +530,7 @@ export class GroupExamReadRepository extends DatabaseRepository {
 
   async personalReview(runId: string, userKey: string) {
     return results(await this.connection().prepare(`
-      SELECT q.position, q.area_code_snapshot, q.prompt_snapshot, q.choices_snapshot_json,
+      SELECT q.position, q.area_code_snapshot, q.prompt_snapshot, q.choices_snapshot_json, q.asset_refs_snapshot_json,
              COALESCE(a.answer_json, '[]') AS answer_json,
              s.correct_answers_snapshot_json, s.explanation_snapshot
       FROM study_group_exam_question_public q

@@ -2,12 +2,11 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { useRouter } from "next/navigation";
-import ReactMarkdown from "react-markdown";
-import remarkGfm from "remark-gfm";
 import { connectGroupSocket, type GroupSocketStatus } from "./group-exam-socket";
 import styles from "./group-exam.module.css";
 import { groupExamApi as api, GroupApiError } from "./group-exam-api";
 import { GroupExamModal } from "./group-exam-modal";
+import { seedGroupExam } from "./group-exam-start-state";
 import { finishLobbyPoll, nextLobbyPoll, type LobbyPollDeadlines } from "./group-exam-lobby-poll";
 import {
   confirmsGroupSettingsReadback,
@@ -52,7 +51,6 @@ export function GroupExamClient() {
   const [selectedId, setSelectedId] = useState("");
   const [detail, setDetail] = useState<AnyRecord | null>(null);
   const [members, setMembers] = useState<AnyRecord[]>([]);
-  const [result, setResult] = useState<AnyRecord | null>(null);
   const [sync, setSync] = useState<AnyRecord | null>(null);
   const [presenceHealth, setPresenceHealth] = useState<PresenceHealth>({ status: "unknown", lastSuccessAt: null });
   const [syncRefreshNonce, setSyncRefreshNonce] = useState(0);
@@ -64,7 +62,6 @@ export function GroupExamClient() {
   const [ownedActiveCount, setOwnedActiveCount] = useState(0);
   const [capabilities, setCapabilities] = useState({ personalProgress: false, strictRepeat: false, webSocket: false });
   const [socketStatus,setSocketStatus] = useState<GroupSocketStatus>("connecting");
-  const [resultLoading, setResultLoading] = useState(false);
   const retryKeys = useRef(new Map<string, string>());
   const settingsPendingAttemptsRef = useRef(new Map<string, SettingsPendingAttempt>());
   const [settingsPendingAttempts, setSettingsPendingAttempts] = useState(new Map<string, SettingsPendingAttempt>());
@@ -119,7 +116,6 @@ export function GroupExamClient() {
     syncRef.current = null;
     syncPhase.current = "idle";
     setPresenceHealth({ status: "unknown", lastSuccessAt: null });
-    setResult(null);
     setSelectedId(groupId);
   }, [detail, refreshDetail]);
 
@@ -170,7 +166,6 @@ export function GroupExamClient() {
     setNotice("");
     let mutationAccepted = false;
     try {
-      if(action==="run-start") setResult(null);
       const signature = `user:${action}:${JSON.stringify(values)}`;
       const explicitMutationKey = typeof values.idempotencyKey === "string" && values.idempotencyKey.length > 0;
       const mutationKey = String(values.idempotencyKey ?? retryKeys.current.get(signature) ?? operationId(action));
@@ -178,19 +173,24 @@ export function GroupExamClient() {
       const requestBody = { action, ...values, idempotencyKey: mutationKey };
       const body = await api("/api/group-exams", { method: "POST", body: JSON.stringify(requestBody) });
       mutationAccepted = true;
-      if (action === "run-start") {
-        const runId = String((body.run as AnyRecord | undefined)?.id ?? "");
-        const groupId = String(values.groupId ?? selectedIdRef.current);
-        if (runId && groupId) {
+      const detailGroupId = String(values.groupId ?? selectedIdRef.current);
+      let latestDetail: AnyRecord | null = null;
+      if (action === "settings-update" && body.settings) {
+        latestDetail = { ...detail, ...(body.settings as AnyRecord) };
+        if (selectedIdRef.current === detailGroupId) setDetail(latestDetail);
+      } else if (action === "run-start") {
+        const run = body.run as AnyRecord | undefined;
+        const runId = String(run?.id ?? "");
+        if (runId) {
+          if (body.current) seedGroupExam(runId, body.current as AnyRecord);
           router.push(`/groups/exams/${encodeURIComponent(runId)}`);
         }
+      } else if (!["invite-create", "invite-revoke", "invite-resend"].includes(action)) {
+        const [, latest] = await Promise.all([refresh(), detailGroupId ? refreshDetail(detailGroupId) : Promise.resolve(null)]);
+        latestDetail = latest;
       }
-      const examMutation = ["answer-save", "question-advance", "run-submit"].includes(action);
-      if (!examMutation) await refresh();
-      const detailGroupId = String(values.groupId ?? selectedIdRef.current);
-      const latestDetail = !examMutation && detailGroupId ? await refreshDetail(detailGroupId) : null;
       if (options.verifyDetail && (!latestDetail || !options.verifyDetail(latestDetail))) {
-        throw new Error(options.verificationError ?? "서버 저장값을 확인하지 못했습니다. 같은 값으로 다시 시도해 주세요.");
+        throw new Error(options.verificationError ?? "저장 여부를 확인하지 못했습니다. 다시 시도해 주세요.");
       }
       if (!explicitMutationKey) retryKeys.current.delete(signature);
       if (options.successNotice) setNotice(options.successNotice);
@@ -240,10 +240,10 @@ export function GroupExamClient() {
       setSync(current);
       setPresenceHealth({ status: "fresh", lastSuccessAt: Date.now() });
       const phase = String(current.phase ?? "idle");
+      if (current.group) setDetail(previous => previous ? {...previous, ...(current.group as AnyRecord)} : previous);
       syncPhase.current = phase;
-      if (phase === "running" || phase === "finalizing") {
-        setResult(null);
-        const runId = String((current.run as AnyRecord | undefined)?.id ?? "");
+      if (current.run) {
+            const runId = String((current.run as AnyRecord | undefined)?.id ?? "");
         setGroups((previous) => previous.map(g => g.id === requestGroupId ? {...g, recent_run_id: runId, recent_run_status: phase} : g));
       }
       return true;
@@ -321,15 +321,6 @@ export function GroupExamClient() {
     };
   }, [capabilities.webSocket, socketStatus, refreshSync, selectedId, syncRefreshNonce]);
 
-  async function openResult() {
-    const runId = String(selected?.recent_run_id ?? "");
-    if (!runId) return;
-    setResultLoading(true);
-    try { setResult(await api(`/api/group-exams?scope=result&runId=${encodeURIComponent(runId)}`)); }
-    catch (error) { setNotice(error instanceof Error ? error.message : "결과를 불러오지 못했습니다."); }
-    finally { setResultLoading(false); }
-  }
-
   const presence = presenceHealth.status === "fresh" ? (sync?.presence as AnyRecord[] | undefined) ?? [] : [];
   const presenceByMembership = new Map(presence.map((item) => [
     String(item.membership_id),
@@ -366,7 +357,7 @@ export function GroupExamClient() {
         <section className={styles.mainStage}>
         {detail && <article className={`${styles.card} ${styles.contextCard}`}>
           <div className={styles.contextHeader}><div><p className={styles.eyebrow}>현재 그룹</p><h2>{String(detail.name)}</h2>
-          <p>현재 {String(detail.active_members)}명 · 초대 예약 {String(detail.reserved_invites)}명 · 정원 {String(detail.member_limit)}명</p></div>
+          <p>현재 {String(detail.active_members)}명{Number(detail.reserved_invites)>0 ? ` · 초대 예약 ${String(detail.reserved_invites)}명` : ""} · 정원 {String(detail.member_limit)}명</p></div>
           <span className={`${styles.phase} ${phase === "running" ? styles.phaseLive : ""}`}>{phase === "running" ? "시험 진행 중" : phase === "scheduled" ? "예약 대기" : phase === "finalizing" ? "채점 중" : phase === "completed" ? "최근 시험 완료" : "대기실"}</span></div>
           <LobbySummary detail={detail} />
           <h3 className={styles.memberHeading}>참가자 <span>{members.length}명</span></h3>
@@ -384,23 +375,21 @@ export function GroupExamClient() {
             </span>}
           </li>;})}</ul>
           {isOwner && <OwnerControls key={selectedId} pendingActions={pendingActions} capabilities={capabilities} groupId={selectedId} detail={detail}
-            members={members} mutate={mutate} pending={settingsPendingAttempts.get(selectedId) ?? null}
+            members={members} phase={phase} mutate={mutate} pending={settingsPendingAttempts.get(selectedId) ?? null}
             onPendingChange={(attempt) => updateSettingsPendingAttempt(selectedId, attempt)} reloadDetail={refreshDetail} />}
-          {<button className={styles.secondary} disabled={pendingActions.has("group-leave")} onClick={() => mutate("group-leave", { groupId: selectedId })}>{isOwner ? "그룹 나가기 / 보관" : "그룹 나가기"}</button>}
+          {<button className={styles.secondary} disabled={pendingActions.has("group-leave")} onClick={() => mutate("group-leave", { groupId: selectedId })}>그룹 나가기</button>}
         </article>}
 
         {selectedId && <article className={`${styles.card} ${styles.examStage}`}>
           <p className={styles.eyebrow}>내 응시</p><h2>{phase === "running" ? "시험이 시작되었습니다" : "준비되면 함께 시작하세요"}</h2>
           <p>{phase === "running" ? "시험 화면에서 답안을 선택하고 다음 문항으로 이동하세요." : "대표가 시험을 시작하면 모든 참가자가 같은 시각에 응시합니다."}</p>
-          <button className={styles.secondary} onClick={() => void refreshSync(false)}>상태 지금 확인</button>
+
           {["running","finalizing"].includes(String(selected?.recent_run_status ?? phase)) && Boolean(selected?.recent_run_id) && <button onClick={()=>router.push(`/groups/exams/${encodeURIComponent(String(selected?.recent_run_id))}`)}>시험 전용 화면 열기</button>}
-          {selected?.recent_run_status === "completed" && <button className={styles.secondary} onClick={openResult}>최근 결과 보기</button>}
+          {selected?.recent_run_status === "completed" && <button className={styles.secondary} onClick={()=>router.push(`/groups/results/${encodeURIComponent(String(selected?.recent_run_id))}`)}>최근 결과 보기</button>}
         </article>}
         </section>
       </section>
-      {resultLoading && <p role="status">결과를 불러오는 중입니다.</p>}
       {selectedId && !detail && <p role="status">그룹 정보를 확인하는 중입니다.</p>}
-      {result && <ResultView result={result} />}
     </main>
   );
 }
@@ -416,12 +405,13 @@ function LobbySummary({ detail }: {detail: AnyRecord}) {
   </div>;
 }
 
-function OwnerControls({ pendingActions, capabilities, groupId, detail, members, mutate, pending, onPendingChange, reloadDetail }: {
+function OwnerControls({ pendingActions, capabilities, groupId, detail, members, phase, mutate, pending, onPendingChange, reloadDetail }: {
   pendingActions: Set<string>;
   capabilities: { personalProgress: boolean; strictRepeat: boolean };
   groupId: string;
   detail: AnyRecord;
   members: AnyRecord[];
+  phase: string;
   mutate: UserMutation;
   pending: SettingsPendingAttempt | null;
   onPendingChange: (attempt: SettingsPendingAttempt | null) => void;
@@ -437,8 +427,10 @@ function OwnerControls({ pendingActions, capabilities, groupId, detail, members,
   );
   const [draft, setDraft] = useState<GroupSettingsDraft>(() => groupSettingsDraft(detail, pending?.submission));
   const settingsRequestPending = useRef(false);
+  const quotaRemaining = Number((detail.lobby as AnyRecord | undefined)?.quotaRemaining ?? 0);
+  const startBlocked = members.length === 0 || quotaRemaining <= 0 || ["running", "finalizing"].includes(phase) || pendingActions.has("run-start");
   async function makeInvite() {
-    const body = await mutate("invite-create", { groupId });
+    const body = await mutate("invite-create", { groupId, reusable:true });
     const token = String((body?.invite as AnyRecord | undefined)?.token ?? "");
     if (token) { setInviteUrl(`${location.origin}/groups/invite/${token}`); setCopyStatus(""); }
   }
@@ -450,7 +442,7 @@ function OwnerControls({ pendingActions, capabilities, groupId, detail, members,
   }
   return <div className={styles.stack}>
     <h3>대표 관리</h3>
-    <div className={styles.actions}><button onClick={() => { setDraft(groupSettingsDraft(detail,pending?.submission)); setModal("settings"); }}>그룹 설정</button><button className={styles.secondary} onClick={() => setModal("invite")}>초대 링크</button><button disabled={members.length === 0} onClick={() => setModal("start")}>시험 시작</button><button className={styles.danger} onClick={()=>setDeleteOpen(true)}>그룹 삭제</button></div>
+    <div className={styles.actions}><button className={styles.secondary} onClick={() => { setDraft(groupSettingsDraft(detail,pending?.submission)); setSettingsStatus(pending ? "unconfirmed" : "idle"); setModal("settings"); }}>그룹 설정</button><button className={styles.secondary} onClick={() => setModal("invite")}>초대 링크</button><button disabled={startBlocked} onClick={() => setModal("start")}>{quotaRemaining <= 0 ? "오늘 응시 완료" : "시험 시작"}</button><button className={styles.danger} onClick={()=>setDeleteOpen(true)}>그룹 삭제</button></div>
     {modal === "settings" && <GroupExamModal title="그룹 설정" onClose={() => setModal(null)}>
     <form onSubmit={async (event) => {
       event.preventDefault();
@@ -462,24 +454,19 @@ function OwnerControls({ pendingActions, capabilities, groupId, detail, members,
       };
       onPendingChange(attempt);
       setSettingsStatus("saving");
-      const confirmation: { detail: AnyRecord | null } = { detail: null };
       const saved = await mutate("settings-update", {
         groupId,
         ...attempt.submission,
         idempotencyKey: attempt.idempotencyKey,
       }, {
         successNotice: "그룹 설정을 저장했습니다.",
-        verifyDetail: (latest) => {
-          const confirmed = confirmsGroupSettingsReadback(latest, attempt.submission);
-          if (confirmed) confirmation.detail = latest;
-          return confirmed;
-        },
-        verificationError: "설정 저장 응답을 받았지만 서버 저장값을 확인하지 못했습니다. 같은 값으로 다시 시도해 주세요.",
+        verifyDetail: (latest) => confirmsGroupSettingsReadback(latest, attempt.submission),
+        verificationError: "설정 저장 여부를 확인하지 못했습니다. 다시 시도해 주세요.",
         onFailure: setSettingsStatus,
       });
       settingsRequestPending.current = false;
-      if (saved && confirmation.detail) {
-        const confirmedDetail = confirmation.detail;
+      if (saved) {
+        const confirmedDetail = { ...detail, ...(saved.settings as AnyRecord) };
         onPendingChange(null);
         setDraft(groupSettingsDraft(confirmedDetail));
         setSettingsStatus("saved");
@@ -491,26 +478,38 @@ function OwnerControls({ pendingActions, capabilities, groupId, detail, members,
           setSettingsStatus("idle");
         }} /></label>
       <label>이전 문항 재등장<select value={draft.repeatPolicy} disabled={Boolean(pending)} aria-describedby="repeat-policy-help" onChange={event => setDraft(value => ({...value,repeatPolicy:event.target.value as "allow" | "forbid"}))}><option value="allow">허용</option><option value="forbid" disabled={!capabilities.strictRepeat}>이 그룹에서 나온 문항 제외</option></select></label>
-      <p id="repeat-policy-help">{capabilities.strictRepeat ? "제외 후 검증된 문항이 부족하면 시작할 수 없습니다." : "문항 출처 확인이 완료되면 반복 금지를 선택할 수 있습니다."}</p>
+      <p id="repeat-policy-help">{capabilities.strictRepeat ? "이전에 풀었던 문항을 제외합니다. 남은 문제가 부족하면 시작할 수 없습니다." : "이전 문항 제외를 아직 사용할 수 없습니다."}</p>
       <label>다음 문항 시간<select value={draft.advanceTimePolicy} disabled={Boolean(pending) || !capabilities.personalProgress} onChange={event => setDraft(value => ({...value,advanceTimePolicy:event.target.value as "carry_remaining" | "reset_to_base"}))}><option value="carry_remaining">남은 시간 더하기</option><option value="reset_to_base">다음 문항 기본 시간만 적용</option></select></label>
       <fieldset><legend>영역별 문항 제한시간(초)</legend>{GROUP_EXAM_AREAS.map((area) => <label key={area}>{area}<input name={area} type="number" min={1} max={3600} value={draft.areaSeconds[area]} required
         disabled={Boolean(pending)} onChange={(event) => {
           setDraft((current) => ({ ...current, areaSeconds: { ...current.areaSeconds, [area]: event.target.value } }));
           setSettingsStatus("idle");
         }} /></label>)}</fieldset>
-      <button disabled={pendingActions.has("settings-update")}>{pending ? "같은 값 다시 저장" : "설정 저장"}</button>
-      {pending && <button type="button" className={styles.secondary} onClick={async () => {
-        if (settingsRequestPending.current) { setModal(null); return; }
+      <p className={settingsStatus === "saved" ? styles.successMessage : styles.formStatus} role="status" aria-live="polite">{settingsStatus === "saving" ? "설정을 저장하고 있습니다…" : settingsStatus === "saved" ? "✓ 설정을 저장했습니다." : settingsStatus === "rejected" ? "설정을 저장하지 못했습니다. 입력값을 확인해 주세요." : settingsStatus === "unconfirmed" ? "연결이 끊겨 저장 여부를 확인하지 못했습니다. 다시 시도해 주세요." : ""}</p>
+      <footer className={styles.modalActions}>
+        <button type="button" className={styles.secondary} disabled={settingsStatus === "saving"} onClick={() => setModal(null)}>닫기</button>
+        <button disabled={pendingActions.has("settings-update")}>{settingsStatus === "saving" ? "저장 중…" : settingsStatus === "unconfirmed" ? "다시 저장" : "설정 저장"}</button>
+      </footer>
+      {pending && settingsStatus !== "saving" && <button type="button" className={styles.textButton} onClick={async () => {
         onPendingChange(null);
         const latest = await reloadDetail(groupId).catch(() => null);
         setDraft(groupSettingsDraft(latest ?? detail));
         setSettingsStatus("idle");
-      }}>보류된 저장 취소</button>}
-      <p role="status" aria-live="polite">{settingsStatus === "saving" ? "설정을 저장하고 있습니다." : settingsStatus === "saved" ? "서버 저장값을 확인했습니다." : settingsStatus === "rejected" ? "서버가 설정 저장 요청을 거절했습니다. 위 오류를 확인해 주세요." : settingsStatus === "unconfirmed" ? "저장 상태를 확인하지 못했습니다. 같은 값으로 다시 시도해 주세요." : ""}</p>
+      }}>입력 다시 하기</button>}
     </form></GroupExamModal>}
-    {modal === "invite" && <GroupExamModal title="그룹원 초대" onClose={() => setModal(null)}><p>초대 링크는 7일 동안 유효하고 정원의 한 자리를 예약합니다.</p><button disabled={pendingActions.has("invite-create")} onClick={makeInvite}>새 초대 링크 만들기</button>{inviteUrl && <><label>초대 링크<input readOnly value={inviteUrl} onFocus={(event) => event.currentTarget.select()} /></label><button type="button" className={styles.secondary} onClick={() => void copyInvite()}>링크 복사</button><p role="status" aria-live="polite">{copyStatus}</p></>}</GroupExamModal>}
-    {modal === "start" && <GroupExamModal title="시험 시작" onClose={() => setModal(null)}><p>현재 그룹원 {members.length}명을 고정 참가자로 등록합니다. 모든 참가자는 같은 서버 시각의 5초 카운트다운 뒤 시작합니다.</p><button disabled={pendingActions.has("run-start") || members.length === 0} onClick={async () => { const started = await mutate("run-start", { groupId, mode: "immediate" }); if (started) setModal(null); }}>지금 시작</button></GroupExamModal>}
-    {deleteOpen&&<GroupExamModal title="그룹 삭제" onClose={()=>{setDeleteOpen(false);setDeleteName("");}}><p>그룹을 목록과 초대에서 보관 처리합니다. 과거 시험 결과와 감사 기록은 안전하게 남습니다. 확인을 위해 그룹 이름 <strong>{String(detail.name)}</strong>을 입력하세요.</p><label>그룹 이름 확인<input value={deleteName} onChange={event=>setDeleteName(event.target.value)} autoComplete="off" /></label><button className={styles.danger} disabled={pendingActions.has("group-delete")||deleteName!==String(detail.name)} onClick={async()=>{const deleted=await mutate("group-delete",{groupId,expectedRevision:Number(detail.revision),confirmedName:deleteName});if(deleted){setDeleteOpen(false);setDeleteName("");}}}>그룹 삭제 확인</button></GroupExamModal>}
+    {modal === "invite" && <GroupExamModal title="그룹원 초대" onClose={() => setModal(null)}>
+      <div className={styles.modalBody}><p>같은 링크를 여러 사람에게 공유할 수 있습니다. 링크는 7일 동안 유효하며, 정원에 도달하면 참여가 마감됩니다.</p>
+      {inviteUrl ? <><label className={styles.inviteLabel}>초대 링크<div className={styles.inviteRow}><input readOnly value={inviteUrl} onFocus={event => event.currentTarget.select()} /><button type="button" onClick={() => void copyInvite()}>{copyStatus === "초대 링크를 복사했습니다." ? "복사됨 ✓" : "링크 복사"}</button></div></label><p className={styles.formStatus} role="status" aria-live="polite">{copyStatus}</p></> : <p className={styles.invitePlaceholder}>링크를 만들어 함께 풀 사람을 초대하세요.</p>}
+      </div><footer className={styles.modalActions}><button className={styles.secondary} onClick={() => setModal(null)}>닫기</button><button disabled={pendingActions.has("invite-create")} onClick={makeInvite}>{pendingActions.has("invite-create") ? "링크 만드는 중…" : inviteUrl ? "새 링크 만들기" : "초대 링크 만들기"}</button></footer>
+    </GroupExamModal>}
+    {modal === "start" && <GroupExamModal title="시험 시작" closeDisabled={pendingActions.has("run-start")} onClose={() => setModal(null)}>
+      <div className={styles.modalBody}><p>현재 그룹원 <strong>{members.length}명</strong>이 함께 응시합니다. 시험 준비가 끝나면 5초 카운트다운 후 시작합니다.</p><div className={styles.startSummary}><span>전체 문항 <strong>{String((detail.lobby as AnyRecord | undefined)?.effectiveQuestionCount ?? 15)}문항</strong></span><span>오늘 남은 횟수 <strong>{quotaRemaining}회</strong></span></div>{quotaRemaining <= 0 && <p className={styles.formStatus}>오늘 응시 횟수를 모두 사용했습니다.</p>}</div>
+      <footer className={styles.modalActions}><button className={styles.secondary} disabled={pendingActions.has("run-start")} onClick={() => setModal(null)}>취소</button><button disabled={startBlocked} onClick={async () => { const started = await mutate("run-start", { groupId, mode: "immediate", waitForView:true }); if (started) setModal(null); }}>{pendingActions.has("run-start") ? "시험 준비 중…" : "지금 시작"}</button></footer>
+    </GroupExamModal>}
+    {deleteOpen && <GroupExamModal title="그룹 삭제" closeDisabled={pendingActions.has("group-delete")} onClose={() => {setDeleteOpen(false);setDeleteName("");}}>
+      <div className={styles.modalBody}><p><strong>{String(detail.name)}</strong> 그룹을 삭제하시겠습니까? 삭제 후에는 되돌릴 수 없습니다.</p><label>확인을 위해 그룹 이름을 입력하세요<input value={deleteName} onChange={event => setDeleteName(event.target.value)} autoComplete="off" placeholder={String(detail.name)} /></label></div>
+      <footer className={styles.modalActions}><button className={styles.secondary} disabled={pendingActions.has("group-delete")} onClick={() => {setDeleteOpen(false);setDeleteName("");}}>취소</button><button className={styles.danger} disabled={pendingActions.has("group-delete") || deleteName !== String(detail.name)} onClick={async () => {const deleted = await mutate("group-delete", {groupId, expectedRevision:Number(detail.revision), confirmedName:deleteName});if(deleted){setDeleteOpen(false);setDeleteName("");}}}>{pendingActions.has("group-delete") ? "삭제 중…" : "그룹 삭제"}</button></footer>
+    </GroupExamModal>}
   </div>;
 }
 
@@ -519,20 +518,4 @@ export function groupAnswerLabel(answer: unknown, choices: unknown): string {
   const labels = Array.isArray(choices) ? choices : [];
   return answer.filter((value): value is number => Number.isInteger(value) && value >= 0 && value < labels.length)
     .map(index => `${index < 20 ? String.fromCodePoint(0x2460 + index) : `${index + 1}번`} ${String(labels[index])}`).join(", ") || "응답 확인 불가";
-}
-
-function ResultView({ result }: { result: AnyRecord }) {
-  const ranking = (result.ranking as AnyRecord[]) ?? [];
-  const ordered = result.orderedResults as AnyRecord[] | undefined;
-  const review = result.review as AnyRecord[];
-  return <section className={`${styles.card} ${styles.results}`} aria-labelledby="result-title"><h2 id="result-title">그룹 결과</h2>
-    {ordered && <ol className={styles.orderedResults}>{ordered.map(row => <li key={String(row.participantId)}>
-      <strong>{String(row.rank)}위 · {String(row.publicName)}{row.self ? " (나)" : ""}</strong>
-      <span>{row.status === "no_show" ? "미접속" : row.status === "auto_submitted" ? "시간 종료" : "응시 완료"}</span>
-      <span>총 소요시간 {row.totalElapsedMs === null ? "—" : `${Math.floor(Number(row.totalElapsedMs)/60000)}분 ${Math.floor(Number(row.totalElapsedMs)/1000)%60}초`}</span>
-      <span>맞음 {String(row.correctCount)} · 틀림 {String(row.incorrectCount)} · 미풀이 {String(row.unansweredCount)}</span>
-    </li>)}</ol>}
-    {!ordered && <div className={styles.tableWrap}><table><caption className="sr-only">그룹 SKCT 참가자 순위와 정답 및 오답 수</caption><thead><tr><th>순위</th><th>이름</th><th>정답 수</th><th>오답 수</th><th>오답 번호</th></tr></thead><tbody>{ranking.map((row, index) => <tr key={`${row.publicName}-${index}`}><td>{String(row.rank)}</td><td>{String(row.publicName)}{row.self ? " (나)" : ""}</td><td>{String(row.score)}</td><td>{String(row.wrongCount)}</td><td>{(row.wrongPositions as number[]).map((item) => item + 1).join(", ") || "없음"}</td></tr>)}</tbody></table></div>}
-    <h3>내 오답과 해설</h3>{review.map((item) => <details key={String(item.position)}><summary>{Number(item.position) + 1}번 · {String(item.area)}</summary><div className={styles.markdown}><ReactMarkdown remarkPlugins={[remarkGfm]}>{String(item.prompt)}</ReactMarkdown></div><p><strong>내 답:</strong> {groupAnswerLabel(item.answer, item.choices)}</p><p><strong>정답:</strong> {groupAnswerLabel(item.correctAnswers, item.choices)}</p><div className={styles.markdown}><ReactMarkdown remarkPlugins={[remarkGfm]}>{String(item.explanation)}</ReactMarkdown></div></details>)}
-  </section>;
 }

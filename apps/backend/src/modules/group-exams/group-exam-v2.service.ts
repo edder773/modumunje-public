@@ -55,6 +55,7 @@ export async function selectV2Questions(run: RunRow, contract: ContractV2, times
 }
 
 export async function createRunV2(body:Record<string,unknown>, userKey:string, key:string, now=new Date()) {
+  const preparationStarted = performance.now();
   const groupId=String(body.groupId ?? "");
   const mode=body.mode;
   if(mode==="scheduled") throw new GroupExamError(410,"시험 예약 기능이 종료되었습니다. 지금 시작을 이용해 주세요.","GROUP_SCHEDULE_REMOVED");
@@ -64,7 +65,8 @@ export async function createRunV2(body:Record<string,unknown>, userKey:string, k
   const replay=await v2Repository.findRunByRequestId(requestId);
   if(replay) {
     if(replay.mode!==mode) throw new GroupExamError(409,"시작 요청 키가 다른 요청에 사용되었습니다.","GROUP_IDEMPOTENCY_CONFLICT");
-    return {run:publicRunV2(replay),replayed:true};
+    if(body.waitForView!==true)await v2Repository.recoverPreparedRun(replay, now);
+    return {run:publicRunV2((await v2Repository.runById(replay.id))!),current:await currentV2Fast(replay.id,userKey,now),replayed:true};
   }
   const group=await v2Repository.groupForOwner(groupId,userKey);
   if(!group) throw new GroupExamError(403,"그룹 대표만 시험을 시작할 수 있습니다.","GROUP_OWNER_REQUIRED");
@@ -72,13 +74,16 @@ export async function createRunV2(body:Record<string,unknown>, userKey:string, k
   if(settings.repeatPolicy==="forbid" && !strictRepeatEnabled()) throw new GroupExamError(409,"반복 금지 출처 검증이 아직 활성화되지 않았습니다.","GROUP_REPEAT_IDENTITY_UNVERIFIED");
   for(const legacy of await v2Repository.scheduledRunsForDeprecation(groupId)) await v2Repository.deprecateScheduledRun(legacy,now.toISOString());
   if(await v2Repository.activeRunForGroup(groupId)) throw new GroupExamError(409,"이미 진행 중인 시험이 있습니다.","GROUP_RUN_ACTIVE");
+  await v2Repository.ensureBaseQuotaSlot(groupId,kstDateKey(now),now.toISOString());
+  const slot=await v2Repository.availableQuotaSlot(groupId,kstDateKey(now));
+  if(!slot) throw new GroupExamError(409,"오늘 응시 횟수를 모두 사용했습니다.","GROUP_DAILY_QUOTA_EXHAUSTED");
   const release=await v2Repository.activeRelease();
   if(!release) throw new GroupExamError(503,"활성 검증 문제은행이 없습니다.","SKCT_RELEASE_UNAVAILABLE");
   if(!approvedSkctNew300Release(release)) throw new GroupExamError(503,"신규 작성 문항 문제은행이 활성화되기 전입니다.","SKCT_RELEASE_UNAVAILABLE");
   const timestamp=now.toISOString();
   const members=await v2Repository.activeMembers(groupId);
   if(!members.length) throw new GroupExamError(409,"참가자가 없습니다.","GROUP_PARTICIPANTS_INSUFFICIENT");
-  const countdownEndsAt=new Date(now.getTime()+GROUP_EXAM_COUNTDOWN_MS);
+  const countdownEndsAt=new Date(now.getTime()+60_000);
   const actualStartTimestamp=countdownEndsAt.toISOString();
   const run:RunRow={id:crypto.randomUUID(),group_id:groupId,start_request_id:requestId,mode,status:"running",
     scheduled_at_utc:null,actual_started_at_utc:actualStartTimestamp,
@@ -88,11 +93,9 @@ export async function createRunV2(body:Record<string,unknown>, userKey:string, k
     created_at:timestamp,completed_at:null,canceled_at:null,failure_code:null};
   const contract:ContractV2={run_id:run.id,advance_time_policy:settings.advanceTimePolicy ?? "carry_remaining",repeat_policy:settings.repeatPolicy,selection_json:JSON.stringify({algorithm:"source-identity-bundle-v2",selectionStatus:"pending_activation",identityVersion:1,repeatPolicy:settings.repeatPolicy,releaseSha256:run.source_release_sha256,repeatFallback:false})};
   const selected=await selectV2Questions(run,contract,timestamp);
+  contract.selection_json=JSON.stringify({...JSON.parse(contract.selection_json),countdownStatus:"preparing"});
   const timeline=buildQuestionTimeline(selected.map(q=>({area:q.area_code as SkctArea,timeLimitSeconds:q.timeLimitSeconds})),countdownEndsAt);
   run.final_deadline_at_utc=timeline?.finalDeadlineAt ?? null;
-  await v2Repository.ensureBaseQuotaSlot(groupId,run.quota_date_key,timestamp);
-  const slot=await v2Repository.availableQuotaSlot(groupId,run.quota_date_key);
-  if(!slot) throw new GroupExamError(409,"오늘 응시 횟수를 모두 사용했습니다.","GROUP_DAILY_QUOTA_EXHAUSTED");
   run.quota_slot_no=slot.slot_no;
   try {
     const created=await v2Repository.createRun({run,slotNo:slot.slot_no,questions:selected.map(q=>({...q,opensAt:timeline?.items[q.position].opensAt ?? null,deadlineAt:timeline?.items[q.position].deadlineAt ?? null})),
@@ -110,7 +113,30 @@ export async function createRunV2(body:Record<string,unknown>, userKey:string, k
     }
     throw new GroupExamError(409,"다른 시작 요청과 충돌했습니다. 다시 확인해 주세요.","GROUP_RUN_CONFLICT");
   }
-  return {run:publicRunV2(run),replayed:false};
+  if(body.waitForView===true)return {run:publicRunV2(run),current:{serverNow:new Date(now.getTime()+Math.ceil(performance.now()-preparationStarted)).toISOString(),phase:"preparing",canBegin:true,participantStatus:"in_progress",run:publicRunV2(run),question:null,publicQuestionWindow:[]},replayed:false};
+  const readyAt = new Date(now.getTime() + Math.ceil(performance.now() - preparationStarted));
+  const startAt = new Date(readyAt.getTime() + GROUP_EXAM_COUNTDOWN_MS);
+  const readyTimeline = buildQuestionTimeline(selected.map(q=>({area:q.area_code as SkctArea,timeLimitSeconds:q.timeLimitSeconds})),startAt)!;
+  const armed = await v2Repository.armPreparedRun(run, startAt.toISOString(), readyTimeline.finalDeadlineAt, readyTimeline.items);
+  if (!armed) throw new GroupExamError(409,"시험 준비 상태를 확인하지 못했습니다. 다시 시도해 주세요.","GROUP_RUN_CONFLICT");
+  run.actual_started_at_utc=startAt.toISOString();run.final_deadline_at_utc=readyTimeline.finalDeadlineAt;run.revision+=1;
+  const current = {serverNow:new Date(now.getTime()+Math.ceil(performance.now()-preparationStarted)).toISOString(),phase:"countdown",countdownEndsAt:run.actual_started_at_utc,
+    participantStatus:"in_progress",run:publicRunV2(run),question:null,publicQuestionWindow:[],
+    progress:{position:0,revision:0,openedAt:run.actual_started_at_utc,deadlineAt:readyTimeline.items[0].deadlineAt,finishedAt:null,policy:contract.advance_time_policy}};
+  return {run:publicRunV2(run),current,replayed:false};
+}
+export async function beginPreparedRunV2(runId:string,userKey:string) {
+  const snapshot=await v2Repository.preparationSnapshot(runId);const {run,contract,questions}=snapshot;
+  if(!run||run.created_by_user_key!==userKey)throw new GroupExamError(403,"시험을 시작한 대표만 준비를 완료할 수 있습니다.","GROUP_OWNER_REQUIRED");
+  if(!contract)throw new GroupExamError(409,"시험 정보를 다시 확인해 주세요.","GROUP_RUN_CONFLICT");
+  if(JSON.parse(contract.selection_json).countdownStatus!=="preparing")return {current:await currentV2Fast(runId,userKey,new Date())};
+  const startAt=new Date(Date.now()+GROUP_EXAM_COUNTDOWN_MS);let cursor=startAt.getTime();
+  const items=questions.map(question=>{const opensAt=new Date(cursor).toISOString();cursor+=question.time_limit_seconds*1000;return {opensAt,deadlineAt:new Date(cursor).toISOString()};});
+  if(!items.length)throw new GroupExamError(409,"시험 문항을 준비하지 못했습니다.","GROUP_RUN_CONFLICT");
+  const finalDeadline=new Date(cursor).toISOString();
+  if(!await v2Repository.armPreparedRun(run,startAt.toISOString(),finalDeadline,items))return {current:await currentV2Fast(runId,userKey,new Date())};
+  run.actual_started_at_utc=startAt.toISOString();run.final_deadline_at_utc=finalDeadline;run.revision+=1;
+  return {current:{serverNow:new Date().toISOString(),phase:"countdown",countdownEndsAt:startAt.toISOString(),participantStatus:"in_progress",run:publicRunV2(run),question:null,publicQuestionWindow:[],progress:{position:0,revision:0,openedAt:startAt.toISOString(),deadlineAt:items[0].deadlineAt,finishedAt:null,policy:contract.advance_time_policy}}};
 }
 export function publicRunV2(run:RunRow) {
   return {id:run.id,groupId:run.group_id,mode:run.mode,status:run.status,scheduledAt:run.scheduled_at_utc,actualStartedAt:run.actual_started_at_utc,
@@ -142,6 +168,8 @@ export async function maintainV2(now=new Date(),groupId?:string) {
   const activated=0;
   let finalized=0,failed=0;
   for(const run of await v2Repository.dueV2(now.toISOString(),groupId)) {
+    const contract=await v2Repository.contract(run.id);
+    if(run.status==="running"&&json(contract?.selection_json,{})?.countdownStatus==="preparing"){await v2Repository.recoverPreparedRun(run,now);continue;}
     if(run.status==="scheduled") {
       if(await v2Repository.deprecateScheduledRun(run,now.toISOString())) failed++;
     } else {
@@ -151,7 +179,14 @@ export async function maintainV2(now=new Date(),groupId?:string) {
   }
   return {activated,finalized,failed};
 }
-export async function currentV2(run:RunRow,userKey:string,now:Date) {
+type PublicCurrentV2 = {
+ serverNow:string;participantStatus:string;canBegin:boolean;run:ReturnType<typeof publicRunV2>;phase:string;
+ countdownEndsAt?:string|null;question:Record<string,unknown>|null;publicQuestionWindow:Record<string,unknown>[];
+ progress?:{revision:number;position:number;carriedMs:number;openedAt:string;deadlineAt:string;finishedAt:string|null;policy:ContractV2["advance_time_policy"]};
+};
+export async function currentV2(run:RunRow,userKey:string,now:Date):Promise<PublicCurrentV2|null> {
+  const contract=(await v2Repository.contract(run.id))!;
+  if(run.status==="running"&&json(contract.selection_json,{})?.countdownStatus==="preparing")return currentV2Fast(run.id,userKey,now);
   let progress=await v2Repository.progress(run.id,userKey);
   if(!progress) throw new GroupExamError(404,"현재 참여 가능한 시험이 없습니다.","GROUP_RUN_NOT_FOUND");
   await reconcileV2(run,now,userKey);
@@ -159,23 +194,30 @@ export async function currentV2(run:RunRow,userKey:string,now:Date) {
   progress=(await v2Repository.progress(run.id,userKey))!;
   if (progress.finished_at_utc) await finalizeV2(run,now);
   const latest=(await v2Repository.runById(run.id))!;
-  const contract=(await v2Repository.contract(run.id))!;
   const countdownEndsAt=latest.actual_started_at_utc;
   const inCountdown=latest.status==="running" && countdownEndsAt !== null && now.getTime()<Date.parse(countdownEndsAt);
   const window=latest.status==="running" && !inCountdown && Date.parse(progress.current_opened_at_utc)<=now.getTime() ? await v2Repository.publicWindow(run.id,userKey,progress.current_position):[];
   const question=window[0] ?? null;
-  return {serverNow:now.toISOString(),participantStatus:progress.terminal_status ?? "in_progress",run:publicRunV2(latest),
-    phase:inCountdown ? "countdown" : latest.status,
+  return {serverNow:now.toISOString(),participantStatus:progress.terminal_status ?? "in_progress",canBegin:latest.created_by_user_key===userKey,run:publicRunV2(latest),
+    phase:inCountdown && json(contract.selection_json,{})?.countdownStatus === "preparing" ? "preparing" : inCountdown ? "countdown" : latest.status,
     countdownEndsAt,
     progress:{revision:progress.revision,position:progress.current_position,carriedMs:progress.carried_ms,openedAt:progress.current_opened_at_utc,deadlineAt:progress.current_deadline_at_utc,finishedAt:progress.finished_at_utc,policy:contract.advance_time_policy},
     question:question ? publicQuestion(question):null,
     publicQuestionWindow:window.map(publicQuestion)};
 }
-export async function currentV2Fast(runId:string,userKey:string,now:Date) {
+export async function currentV2Fast(runId:string,userKey:string,now:Date):Promise<PublicCurrentV2|null> {
   const snapshot=await v2Repository.currentSnapshot(runId,userKey,now.toISOString());
   if(!snapshot.contract) return null;
   const {run,progress,contract}=snapshot;
   if(!run || !progress) throw new GroupExamError(404,"현재 참여 가능한 시험이 없습니다.","GROUP_RUN_NOT_FOUND");
+  if(run.status==="running"&&json(contract.selection_json,{})?.countdownStatus==="preparing") {
+    if(run.actual_started_at_utc&&Date.parse(run.actual_started_at_utc)<=now.getTime()) {
+      await v2Repository.recoverPreparedRun(run,now);
+      return currentV2Fast(runId,userKey,now);
+    }
+    return {serverNow:now.toISOString(),phase:"preparing",canBegin:run.created_by_user_key===userKey,
+      participantStatus:"in_progress",run:publicRunV2(run),question:null,publicQuestionWindow:[]};
+  }
   if((run.status==="running" && run.final_deadline_at_utc && Date.parse(run.final_deadline_at_utc)<=now.getTime())
     || (run.status==="running" && !progress.finished_at_utc && Date.parse(progress.current_deadline_at_utc)<=now.getTime())
     || (run.status==="running" && progress.finished_at_utc)) {
@@ -188,8 +230,8 @@ export async function currentV2Fast(runId:string,userKey:string,now:Date) {
   const window=run.status==="running" && !inCountdown && !progress.finished_at_utc
     && Date.parse(progress.current_opened_at_utc)<=now.getTime() ? snapshot.window : [];
   const question=window[0] ?? null;
-  return {serverNow:now.toISOString(),participantStatus:progress.terminal_status ?? "in_progress",run:publicRunV2(run),
-    phase:inCountdown ? "countdown" : run.status,countdownEndsAt,
+  return {serverNow:now.toISOString(),participantStatus:progress.terminal_status ?? "in_progress",canBegin:run.created_by_user_key===userKey,run:publicRunV2(run),
+    phase:inCountdown && json(contract.selection_json,{})?.countdownStatus === "preparing" ? "preparing" : inCountdown ? "countdown" : run.status,countdownEndsAt,
     progress:{revision:progress.revision,position:progress.current_position,carriedMs:progress.carried_ms,openedAt:progress.current_opened_at_utc,
       deadlineAt:progress.current_deadline_at_utc,finishedAt:progress.finished_at_utc,policy:contract.advance_time_policy},
     question:question ? publicQuestion(question):null,publicQuestionWindow:window.map(publicQuestion)};
@@ -201,6 +243,7 @@ export async function mutateV2(input:{runId:string;userKey:string;action:"answer
   const before=input.preflight ? input.preflight.progress : await v2Repository.progress(input.runId,input.userKey);
   const contract=input.preflight ? input.preflight.contract : await v2Repository.contract(input.runId);
   if(!run || !before || !contract || run.status!=="running" || before.finished_at_utc || before.revision!==input.expectedProgressRevision) throw new GroupExamError(409,"시험 진행 상태가 변경되었습니다. 다시 확인해 주세요.","GROUP_PROGRESS_CONFLICT");
+  if(json(contract.selection_json,{})?.countdownStatus==="preparing")throw new GroupExamError(409,"시험 준비가 끝난 뒤 응시할 수 있습니다.","GROUP_COUNTDOWN_ACTIVE");
   let after=before;
   if(input.action==="question-advance") {
     const nextSeconds=input.preflight ? input.preflight.nextTimeLimit : (await v2Repository.questionsForRun(input.runId))[before.current_position+1]?.time_limit_seconds;

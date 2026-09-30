@@ -65,7 +65,7 @@ export async function readSyncBody(groupId: string, userKey: string, now: Date, 
   }
   const current = includeCurrent && run && (run.status === "running" || run.status === "finalizing")
     ? await publicCurrentPayload(run, userKey, now) : null;
-  return { current, serverNow: now.toISOString(), groupId, stateVersion, presenceVersion,
+  return { current, group, serverNow: now.toISOString(), groupId, stateVersion, presenceVersion,
     phase: run && (run.status === "running" || run.status === "finalizing") ? run.status : scheduled ? "scheduled" : run?.status ?? "idle",
     run: publicSyncRun(run ?? null), scheduledRun: scheduled ? publicSyncRun(scheduled) : null, presence };
 }

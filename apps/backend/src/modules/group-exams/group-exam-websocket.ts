@@ -63,13 +63,12 @@ export async function handleGroupExamWebSocket(request:Request):Promise<Response
     if(typeof event.data!=="string"||event.data.length>32768){socket.close(1009,"message too large");cleanup();return;}
     let frame:{type?:string;id?:string;path?:string;method?:string;body?:Record<string,unknown>;idempotencyKey?:string};try{frame=JSON.parse(event.data);}catch{return;}
     if(frame.type==="ping"){
-      if(pingBusy)return;pingBusy=true;
+      if(pingBusy||busy){send(client,{type:"pong",serverNow:new Date().toISOString()});return;}pingBusy=true;
       try{const next=await revision(groupId);if(next!==version){version=next;client.invalidate();}send(client,{type:"pong",serverNow:new Date().toISOString()});}
       catch{send(client,{type:"reconnect"});cleanup();}finally{pingBusy=false;}return;
     }
     const id=String(frame.id??"");
     if(frame.type!=="request"||!/^[a-zA-Z0-9-]{1,80}$/u.test(id))return;
-    if(busy){send(client,{type:"response",id,status:429,body:{error:"이전 요청을 확인 중입니다."}});return;}
     let target:URL;try{target=new URL(String(frame.path??""),request.url);}catch{send(client,{type:"response",id,status:400,body:{error:"요청 주소가 올바르지 않습니다."}});return;}const method=String(frame.method??"GET");
     const scope=target.searchParams.get("scope")??"";const body=frame.body;
     if(target.origin!==url.origin||target.pathname!=="/api/group-exams"||!["GET","POST"].includes(method)
@@ -79,13 +78,20 @@ export async function handleGroupExamWebSocket(request:Request):Promise<Response
       ||(body?.groupId&&body.groupId!==groupId)||(runId&&body?.runId&&body.runId!==runId)){
       send(client,{type:"response",id,status:403,body:{error:"이 연결에서 처리할 수 없는 요청입니다."}});return;
     }
-    busy=true;try{
+    const requestedRun=String(target.searchParams.get("runId")??body?.runId??"");
+    if(requestedRun&&!runId){
+      const room=await getD1().prepare("SELECT group_id FROM study_group_exam_runs WHERE id=?").bind(requestedRun).first<{group_id:string}>();
+      if(!room||room.group_id!==groupId){send(client,{type:"response",id,status:403,body:{error:"이 그룹의 시험이 아닙니다."}});return;}
+    }
+    const mutation=method==="POST"&&body?.action!=="presence-heartbeat";
+    if(mutation&&busy){send(client,{type:"response",id,status:429,body:{error:"저장 중입니다. 잠시 후 다시 시도해 주세요."}});return;}
+    if(mutation)busy=true;try{
       const response=await authenticatedCall(request,target.pathname+target.search,method,body,String(frame.idempotencyKey??""));
       const result=await response.json();send(client,{type:"response",id,status:response.status,body:result});
       if(response.status===401||response.status===403){cleanup();return;}
-      if(response.ok&&method==="POST"&&body?.action!=="presence-heartbeat")client.invalidate();
-    }catch{send(client,{type:"response",id,status:503,body:{error:"시험 상태를 확인하지 못했습니다. 같은 요청으로 다시 시도해 주세요."}});}finally{busy=false;}
+      if(response.ok&&mutation&&!["question-advance","answer-save","settings-update","invite-create"].includes(String(body?.action)))client.invalidate();
+    }catch{send(client,{type:"response",id,status:503,body:{error:"시험 상태를 확인하지 못했습니다. 같은 요청으로 다시 시도해 주세요."}});}finally{if(mutation)busy=false;}
   });
-  send(client,{type:"ready",groupId,runId,serverNow:new Date().toISOString()});
+  send(client,{type:"ready",groupId,runId,serverNow:new Date().toISOString(),...(runId?{current:initial}:{})});
   return new Response(null,{status:101,webSocket:peer} as ResponseInit & {webSocket:WorkerSocket});
 }

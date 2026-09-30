@@ -1,6 +1,6 @@
 import { response, string, integer, idempotencyKey, sha256, canonicalJson, rawInviteToken, parseAnswers, safeJson, payload, errorResponse } from "./group-exam-http";
 import { withGroupMetrics, groupMetricPhase } from "@backend/common/observability/group-exam-metrics";
-import { createRunV2, GROUP_EXAM_COUNTDOWN_MS, v2Enabled, strictRepeatEnabled, v2Repository, maintainV2, currentV2, currentV2Fast, mutateV2, orderedResultV2 } from "./group-exam-v2.service";
+import { beginPreparedRunV2, createRunV2, GROUP_EXAM_COUNTDOWN_MS, v2Enabled, strictRepeatEnabled, v2Repository, maintainV2, currentV2, currentV2Fast, mutateV2, orderedResultV2 } from "./group-exam-v2.service";
 import {
   authorizeLearnerRequest,
   authorizeAdminRequest,
@@ -68,6 +68,7 @@ async function idempotentMutation(
   timestamp: string,
   mutation: (idempotency: MutationIdempotency) => Promise<void>,
   prefetched?: { replay: { request_digest: string; execution_id: string; response_status: number; response_json: string } | null; verifiedMutation: boolean },
+  committedResponse = false,
 ) {
   const key = idempotencyKey(request, body);
   const requestDigest = await sha256(canonicalJson(digestPayload));
@@ -84,7 +85,7 @@ async function idempotentMutation(
   };
   try {
     await mutation(idempotency);
-    if (prefetched?.verifiedMutation) return response(idempotency.response, responseStatus);
+    if (committedResponse || prefetched?.verifiedMutation) return response(idempotency.response, responseStatus);
     const persisted = await repository.readIdempotent(actorUserKey, action, key);
     if (persisted) {
       if (persisted.request_digest !== requestDigest) {
@@ -421,8 +422,9 @@ async function getHandler(request: Request) {
         answer: safeJson(String(item.answer_json), []),
         correctAnswers: safeJson(String(item.correct_answers_snapshot_json), []),
         explanation: item.explanation_snapshot,
+        assets: safeJson(String(item.asset_refs_snapshot_json), []),
       }));
-      return response({ run: { id: run.id, completedAt: run.completed_at }, ranking, review, ...(orderedResults ? { contractVersion: 2, orderedResults } : {}) });
+      return response({ run: { id: run.id, groupId: run.group_id, completedAt: run.completed_at, questionCount:run.question_count_snapshot }, ranking, review, ...(orderedResults ? { contractVersion: 2, orderedResults } : {}) });
     }
     throw new GroupExamError(404, "지원하지 않는 조회입니다.", "GROUP_SCOPE_INVALID");
   } catch (error) {
@@ -489,15 +491,16 @@ async function postHandler(request: Request) {
       const token = rawInviteToken();
       const inviteId = crypto.randomUUID();
       const expiresAt = new Date(Date.now() + INVITE_TTL_MS).toISOString();
-      const result = { invite: { id: inviteId, token, expiresAt } };
-      return await idempotentMutation(request, body, userKey, action, { groupId }, result, 201, now, async (idempotency) => {
+      const reusable = body.reusable === true;
+      const result = { invite: { id: inviteId, token, expiresAt, reusable } };
+      return await idempotentMutation(request, body, userKey, action, body.reusable === undefined ? { groupId } : { groupId, reusable }, result, 201, now, async (idempotency) => {
         const owner = await repository.groupForOwner(groupId, userKey);
         if (!owner) throw new GroupExamError(403, "그룹 대표만 초대할 수 있습니다.", "GROUP_OWNER_REQUIRED");
         const occupied = (await repository.activeMembers(groupId)).length + await repository.activeInviteCount(groupId, now);
         if (occupied >= owner.member_limit) throw new GroupExamError(409, "그룹 정원이 모두 예약되었습니다.", "GROUP_CAPACITY_FULL");
-        const invite = await repository.createInvite({ id: inviteId, groupId, digest: await sha256(token), expiresAt, actorUserKey: userKey, timestamp: now, idempotency });
+        const invite = await repository.createInvite({ reusable, id: inviteId, groupId, digest: await sha256(token), expiresAt, actorUserKey: userKey, timestamp: now, idempotency });
         if (!invite) throw new GroupExamError(409, "그룹 정원이 모두 예약되었거나 그룹 상태가 바뀌었습니다.", "GROUP_CAPACITY_FULL");
-      });
+      }, undefined, true);
     }
     if (action === "invite-resend") {
       const inviteId = string(body.inviteId, "초대 ID");
@@ -546,10 +549,10 @@ async function postHandler(request: Request) {
       const parsedSettings = parseGroupExamSettings(body.settings);
       if (parsedSettings.repeatPolicy === "forbid" && !strictRepeatEnabled()) throw new GroupExamError(409, "반복 금지 출처 검증이 아직 활성화되지 않았습니다.", "GROUP_REPEAT_IDENTITY_UNVERIFIED");
       const settingsJson = JSON.stringify(parsedSettings);
-      return await idempotentMutation(request, body, userKey, action, { groupId, expectedRevision, memberLimit, settings: safeJson(settingsJson, {}) }, { updated: true }, 200, now, async (idempotency) => {
+      return await idempotentMutation(request, body, userKey, action, { groupId, expectedRevision, memberLimit, settings: safeJson(settingsJson, {}) }, { updated: true, settings: {member_limit:memberLimit, settings_json:settingsJson, revision:expectedRevision + 1} }, 200, now, async (idempotency) => {
         const updated = await repository.updateGroupSettings({ groupId, actorUserKey: userKey, expectedRevision, memberLimit, settingsJson, timestamp: now, idempotency });
         if (!updated) throw new GroupExamError(409, "설정이 변경되었거나 예약 인원이 정원을 초과합니다.", "GROUP_REVISION_CONFLICT");
-      });
+      }, undefined, true);
     }
     if (action === "member-kick") {
       const groupId = string(body.groupId, "그룹 ID");
@@ -583,6 +586,7 @@ async function postHandler(request: Request) {
         }
       });
     }
+    if (action === "run-ready") return response(await beginPreparedRunV2(string(body.runId,"시험 ID"),userKey));
     if (action === "run-start") return response(v2Enabled() ? await createRunV2(body, userKey, idempotencyKey(request, body)) : await createRun(request, body, userKey), 201);
     if (action === "run-cancel") {
       throw new GroupExamError(410,"시험 예약 기능이 종료되었습니다.","GROUP_SCHEDULE_REMOVED");

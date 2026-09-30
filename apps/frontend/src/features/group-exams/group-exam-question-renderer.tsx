@@ -16,7 +16,7 @@ export function QuestionRenderer({question}:{question:Record<string,unknown>}) {
   const assets=Array.isArray(question.asset_refs_snapshot_json) ? question.asset_refs_snapshot_json as Record<string,unknown>[]:[];
   return <>
     <div className={`${styles.stimulusPanel} ${styles.markdown}`} aria-label="지문과 문제 자료">
-      <ReactMarkdown remarkPlugins={[remarkGfm]} components={{
+      <ReactMarkdown remarkPlugins={[[remarkGfm, {singleTilde:false}]]} components={{
         table:({children})=><div className={styles.dataPanel} role="region" aria-label="문항 표" tabIndex={0}><table>{children}</table></div>,
         img:()=>null,
       }}>{String(question.prompt_snapshot ?? "")}</ReactMarkdown>

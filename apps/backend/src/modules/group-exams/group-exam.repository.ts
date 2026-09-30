@@ -78,6 +78,7 @@ export class GroupExamRepository extends GroupExamMutationRepository {
   }
 
   async createInvite(input: {
+    reusable?: boolean;
     id: string;
     groupId: string;
     digest: string;
@@ -90,8 +91,8 @@ export class GroupExamRepository extends GroupExamMutationRepository {
     const batch = await this.connection().batch([this.connection().prepare(`
       INSERT INTO study_group_invites (
         id, group_id, token_digest, status, expires_at, created_by_user_key,
-        last_mutation_execution_id, created_at
-      ) SELECT ?, g.id, ?, 'active', ?, ?, ?, ?
+        last_mutation_execution_id, created_at, reusable
+      ) SELECT ?, g.id, ?, 'active', ?, ?, ?, ?, ?
         FROM study_groups g
         WHERE g.id = ? AND g.owner_user_key = ? AND g.status = 'active'
           AND (
@@ -99,11 +100,11 @@ export class GroupExamRepository extends GroupExamMutationRepository {
             WHERE m.group_id = g.id AND m.status = 'active'
           ) + (
             SELECT COUNT(*) FROM study_group_invites i
-            WHERE i.group_id = g.id AND i.status = 'active' AND i.expires_at > ?
+            WHERE i.group_id = g.id AND i.status = 'active' AND i.reusable = 0 AND i.expires_at > ?
           ) < g.member_limit
     `).bind(
       input.id, input.digest, input.expiresAt, input.actorUserKey,
-      input.idempotency.executionId, input.timestamp,
+      input.idempotency.executionId, input.timestamp, input.reusable ? 1 : 0,
       input.groupId, input.actorUserKey, input.timestamp,
     ), await this.writeGroupAudit({
       groupId: input.groupId, actorUserKey: input.actorUserKey, action: "invite-create",
@@ -115,7 +116,7 @@ export class GroupExamRepository extends GroupExamMutationRepository {
       [input.id, input.idempotency.executionId])]);
     const result = batch[0];
     if (Number(result.meta?.changes ?? 0) === 0) return null;
-    return this.inviteById(input.id);
+    return {id:input.id};
   }
 
   async rotateInvite(input: {
@@ -143,8 +144,8 @@ export class GroupExamRepository extends GroupExamMutationRepository {
       this.connection().prepare(`
         INSERT INTO study_group_invites (
           id, group_id, token_digest, status, expires_at, created_by_user_key,
-          last_mutation_execution_id, created_at
-        ) SELECT ?, group_id, ?, 'active', ?, ?, ?, ?
+          last_mutation_execution_id, created_at, reusable
+        ) SELECT ?, group_id, ?, 'active', ?, ?, ?, ?, reusable
           FROM study_group_invites
           WHERE id = ? AND status = 'revoked' AND last_mutation_execution_id = ?
       `).bind(input.nextId, input.nextDigest, input.expiresAt, input.actorUserKey,
@@ -199,7 +200,7 @@ export class GroupExamRepository extends GroupExamMutationRepository {
     const statements = [
       this.connection().prepare(`
         UPDATE study_group_invites
-        SET status = 'accepted', consumed_by_user_key = ?, consumed_at = ?,
+        SET status = CASE WHEN reusable = 1 THEN 'active' ELSE 'accepted' END, consumed_by_user_key = ?, consumed_at = ?,
             revision = revision + 1, last_mutation_execution_id = ?
         WHERE id = ? AND token_digest = ? AND status = 'active' AND expires_at > ?
           AND EXISTS (
@@ -210,7 +211,7 @@ export class GroupExamRepository extends GroupExamMutationRepository {
                 WHERE m.group_id = g.id AND m.status = 'active' AND m.user_key <> ?
               ) + (
                 SELECT COUNT(*) FROM study_group_invites pending
-                WHERE pending.group_id = g.id AND pending.status = 'active'
+                WHERE pending.group_id = g.id AND pending.status = 'active' AND pending.reusable = 0
                   AND pending.expires_at > ? AND pending.id <> study_group_invites.id
               ) < g.member_limit
           )
@@ -229,7 +230,7 @@ export class GroupExamRepository extends GroupExamMutationRepository {
         )
         SELECT i.group_id, ?, ?, ?, 'active', ?, ?, ?, NULL
         FROM study_group_invites i
-        WHERE i.id = ? AND i.status = 'accepted'
+        WHERE i.id = ? AND (i.status = 'accepted' OR (i.status = 'active' AND i.reusable = 1))
           AND i.consumed_by_user_key = ? AND i.last_mutation_execution_id = ?
         ON CONFLICT(group_id, user_key) DO UPDATE SET
           public_name = excluded.public_name,
@@ -256,7 +257,7 @@ export class GroupExamRepository extends GroupExamMutationRepository {
         SELECT ?, ?, ?, ?, ?, ?, ?
         WHERE EXISTS (
           SELECT 1 FROM study_group_invites i
-          WHERE i.id = ? AND i.status = 'accepted' AND i.consumed_by_user_key = ?
+          WHERE i.id = ? AND (i.status = 'accepted' OR (i.status = 'active' AND i.reusable = 1)) AND i.consumed_by_user_key = ?
             AND i.last_mutation_execution_id = ?
           AND EXISTS (
             SELECT 1 FROM study_group_members m
@@ -305,7 +306,7 @@ export class GroupExamRepository extends GroupExamMutationRepository {
           WHERE m.group_id = study_groups.id AND m.status = 'active'
         ) + (
           SELECT COUNT(*) FROM study_group_invites i
-          WHERE i.group_id = study_groups.id AND i.status = 'active' AND i.expires_at > ?
+          WHERE i.group_id = study_groups.id AND i.status = 'active' AND i.reusable = 0 AND i.expires_at > ?
         )
     `).bind(
       input.memberLimit, input.settingsJson, input.idempotency.executionId,

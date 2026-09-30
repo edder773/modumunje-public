@@ -1,10 +1,10 @@
 {
   "apps/backend/src/modules/group-exams/group-exam-v2.service.ts": {
-    "sha256": "d4f9f695a19126d508bf125a98d6cba7424c49dca79cf3903599a2e1e358f3c9",
+    "sha256": "376a1ef15f6910a929e5b20d8adc3bf85db956f7c8425d11d3eed305cd13f784",
     "reason": "Server-side group session control and localized errors; question and answer values are fetched at runtime, not embedded."
   },
   "apps/backend/src/modules/group-exams/group-exam.service.ts": {
-    "sha256": "8da231f3e808e7181b24c9131cc1238dc658e6221e7565048f256324af1e4dd6",
+    "sha256": "cc83b4709537cfdb67250e1149d0f0f39e56363545e890de5af1353f305ec4af",
     "reason": "Runtime study or group exam control and Korean UI labels. Content and answers are read from the authenticated database; no private question bank is embedded."
   },
   "apps/backend/src/modules/skct-personal/skct-personal-release-admin.ts": {
@@ -40,7 +40,7 @@
     "reason": "Administrator form labels and dynamic database-backed content rendering; no fixed question, choice or answer rows."
   },
   "apps/frontend/src/features/group-exams/group-exam-client.tsx": {
-    "sha256": "1bcd0d10db1d4b8fc26ca01afb67da445eaa54ac8aaa41e91336b688e68bc0c0",
+    "sha256": "d14d30bec35833c27aa35a13ac8af9e766d276be4008511616c1b4dfd0eec26c",
     "reason": "Runtime study or group exam control and Korean UI labels. Content and answers are read from the authenticated database; no private question bank is embedded."
   },
   "apps/frontend/src/features/study/components/local-practice/workbook.tsx": {
@@ -86,5 +86,9 @@
   "apps/frontend/src/features/study/model/use-practice-session.ts": {
     "sha256": "66ac6d7f6a8583b301f36754771e35d07204bbf1a9957ecfb2508d27e48ea45f",
     "reason": "Learner interface labels and dynamic API-backed question rendering; no embedded released prompt or answer key."
+  },
+  "tests/e2e/group-ux.spec.ts": {
+    "sha256": "7db22927221acb54dd606af3474c940168f4c99a2f855a651613aca4622a2f55",
+    "reason": "Synthetic local UI fixtures for quota, save feedback, invitation spacing and result colors. All prompts and choices are toy examples written for tests; no production question bank, user records or secrets."
   }
 }
