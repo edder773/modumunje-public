@@ -1,5 +1,6 @@
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
+import {splitGroupQuestionPrompt} from "./group-exam-question-parts";
 import styles from "./group-exam.module.css";
 
 const assetDescriptions: Record<string,string> = {
@@ -14,13 +15,14 @@ const assetDescriptions: Record<string,string> = {
 };
 export function QuestionRenderer({question}:{question:Record<string,unknown>}) {
   const assets=Array.isArray(question.asset_refs_snapshot_json) ? question.asset_refs_snapshot_json as Record<string,unknown>[]:[];
+  const {stimulus,instruction}=splitGroupQuestionPrompt(String(question.prompt_snapshot ?? ""));
   return <>
-    <div className={`${styles.stimulusPanel} ${styles.markdown}`} aria-label="지문과 문제 자료">
+    {stimulus && <div className={`${styles.stimulusPanel} ${styles.markdown}`} aria-label="지문과 문제 자료">
       <ReactMarkdown remarkPlugins={[[remarkGfm, {singleTilde:false}]]} components={{
         table:({children})=><div className={styles.dataPanel} role="region" aria-label="문항 표" tabIndex={0}><table>{children}</table></div>,
         img:()=>null,
-      }}>{String(question.prompt_snapshot ?? "")}</ReactMarkdown>
-    </div>
+      }}>{stimulus}</ReactMarkdown>
+    </div>}
     {assets.length>0 && <div className={styles.questionAssets} aria-label="그림 자료">{assets.map(asset=>{
       const direct=String(asset.url ?? "");
       if (/^\/api\/private-diagrams\/skct\/[a-f0-9]{64}\.svg$/u.test(direct)) {
@@ -37,5 +39,6 @@ export function QuestionRenderer({question}:{question:Record<string,unknown>}) {
       // eslint-disable-next-line @next/next/no-img-element -- reviewed immutable SVG asset, no external or raster source.
       return <figure key={path}><img src={authored ? `/api/private-diagrams/skct/${sha}.svg` : `/${path}`} alt={alt} width={typeof asset.width === "number" ? asset.width : undefined} height={typeof asset.height === "number" ? asset.height : undefined} loading={typeof asset.width === "number" && typeof asset.height === "number" ? "lazy" : "eager"} decoding="async" /><figcaption>{alt}</figcaption></figure>;
     })}</div>}
+    {instruction && <section className={`${styles.questionInstruction} ${styles.markdown}`} aria-label="문제 지시문"><ReactMarkdown remarkPlugins={[[remarkGfm,{singleTilde:false}]]}>{instruction}</ReactMarkdown></section>}
   </>;
 }

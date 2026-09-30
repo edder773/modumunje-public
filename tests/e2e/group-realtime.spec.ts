@@ -1,4 +1,5 @@
 /* eslint-disable @typescript-eslint/no-explicit-any -- synthetic JSON payloads are checked by concrete field and behavior assertions. */
+import {writeFile} from 'node:fs/promises';
 import {test,expect} from '@playwright/test';
 import {createLocalGoogleStorageState} from './local-google-session';
 test('two real participant browsers receive a shared start over WebSocket and save an answer',async({page,browser},testInfo)=>{
@@ -15,10 +16,14 @@ test('two real participant browsers receive a shared start over WebSocket and sa
  await page.getByRole('button',{name:'시험 시작',exact:true}).click();const began=Date.now();await page.getByRole('button',{name:'지금 시작',exact:true}).click();
  await expect(page).toHaveURL(/\/groups\/exams\//);await expect(page.locator('main strong').filter({hasText:/^5$/})).toBeVisible();const startViewMs=Date.now()-began;await expect(second.getByRole('button',{name:'시험 전용 화면 열기'})).toBeVisible({timeout:4_000});
  await expect(page.getByRole('radio')).toHaveCount(5,{timeout:10_000});await expect(page.getByText('● 실시간 연결',{exact:true})).toBeVisible();
- await page.getByRole('radio').nth(1).check();const advancing=Date.now();await page.getByRole('button',{name:/다음 문항/}).click();await expect(page.getByRole('heading',{name:'2번 문항',exact:true})).toBeVisible();const advanceViewMs=Date.now()-advancing;await testInfo.attach('local-interaction-latency',{body:JSON.stringify({startViewMs,advanceViewMs,environment:'isolated local preview'}),contentType:'application/json'});expect(advanceViewMs).toBeLessThan(1500);
+ await page.evaluate(()=>{const metrics:unknown[]=[];(window as any).__groupTimings=metrics;for(const name of ['group-exam-metric','group-exam-interaction'])window.addEventListener(name,e=>metrics.push({event:name,...(e as CustomEvent).detail}));});
+ await page.getByLabel('풀이 메모',{exact:true}).fill('첫 번째 문항 메모');await page.getByRole('radio').nth(1).check();const advancing=Date.now();await page.getByRole('button',{name:/다음 문항/}).click();await expect(page.getByRole('heading',{name:'2번 문항',exact:true})).toBeVisible();const advanceViewMs=Date.now()-advancing;await expect(page.getByLabel('풀이 메모',{exact:true})).toHaveValue('');await testInfo.attach('local-interaction-latency',{body:JSON.stringify({startViewMs,advanceViewMs,environment:'isolated local preview'}),contentType:'application/json'});expect(advanceViewMs).toBeLessThan(1500);
  expect(frames).toContain('response');
+ await expect(page.getByRole('radio').nth(1)).toBeEnabled();
+ for(let number=3;number<=5;number++){await page.getByLabel('풀이 메모',{exact:true}).fill('문항 메모');await page.getByRole('radio').nth(1).check();await page.getByRole('button',{name:/다음 문항/}).click();await expect(page.getByRole('heading',{name:`${number}번 문항`,exact:true})).toBeVisible();await expect(page.getByLabel('풀이 메모',{exact:true})).toHaveValue('');await expect(page.getByRole('radio').nth(1)).toBeEnabled();}
+ const timings=await page.evaluate(()=>(window as any).__groupTimings);const advances=timings.filter((m:any)=>m.route==='question-advance');expect(advances).toHaveLength(4);for(const metric of advances){expect(metric.transport).toBe('websocket');expect(metric.serverTiming).toContain('preflight');expect(metric.roundtripMs).toBeGreaterThan(0);}await writeFile(testInfo.outputPath('local-websocket-timings.json'),JSON.stringify({environment:'isolated local preview',startViewMs,advanceViewMs,timings},null,2));
  for(const width of [1280,390,320]){await page.setViewportSize({width,height:900});expect(await page.evaluate(()=>document.documentElement.scrollWidth)).toBeLessThanOrEqual(width);
-  const labels=page.getByRole('radio').locator('..').locator('span:last-child');const lefts=await labels.evaluateAll(es=>es.map(e=>Math.round(e.getBoundingClientRect().left)));expect(new Set(lefts).size).toBe(1);
+  const labels=page.getByRole('radio').locator('..').locator('span:last-child');const lefts=await labels.evaluateAll(es=>es.map(e=>Math.round(e.getBoundingClientRect().left)));expect(new Set(lefts).size).toBe(1);const gaps=await page.getByRole('radio').first().locator('..').evaluate(e=>{const spans=e.querySelectorAll('span');return spans[1].getBoundingClientRect().left-spans[0].getBoundingClientRect().right;});expect(gaps).toBeLessThanOrEqual(9);
   if(width!==320)await page.screenshot({path:testInfo.outputPath(`group-runner-${width}.png`),fullPage:true});}
  await other.close();
 });

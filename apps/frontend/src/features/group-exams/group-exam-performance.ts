@@ -12,6 +12,8 @@ export function beginGroupRequest(url:string, init?:RequestInit) {
     // Local event only. An operator may collect aggregate timings during a controlled session.
     window.dispatchEvent(new CustomEvent("group-exam-metric",{detail:{route,visibility:document.visibilityState,
       wallMs:performance.now()-started,ttfbMs:headersAt-started,overlap,status:response?.status??0,
+      transport:response?.headers.get("X-Group-Transport")??"http",queueMs:Number(response?.headers.get("X-Group-Queue-Ms")??0),
+      roundtripMs:response?.headers.has("X-Group-Roundtrip-Ms")?Number(response.headers.get("X-Group-Roundtrip-Ms")):null,
       payloadBytes:Number(response?.headers.get("X-Group-Payload-Bytes")??0),serverTiming:response?.headers.get("Server-Timing")??null}}));
   }};
 }

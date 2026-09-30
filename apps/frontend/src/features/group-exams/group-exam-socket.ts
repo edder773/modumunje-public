@@ -1,6 +1,6 @@
 export type GroupSocketStatus = "connecting" | "connected" | "offline";
 type Options = { groupId?:string; runId?:string; onInvalidate:()=>void; onReady?:(current:Record<string,unknown>)=>void; onStatus:(status:GroupSocketStatus)=>void };
-type Pending = { resolve:(response:Response)=>void; reject:(error:Error)=>void; timer:number; cleanup:()=>void };
+type Pending = { resolve:(response:Response)=>void; reject:(error:Error)=>void; timer:number; cleanup:()=>void; queuedAt:number; sentAt:number };
 const sessions = new Set<GroupSocket>();
 class GroupSocket {
   socket:WebSocket|null=null;
@@ -33,7 +33,13 @@ class GroupSocket {
       else if(frame.type==="response"){
         const pending=this.pending.get(String(frame.id));if(!pending)return;
         this.pending.delete(String(frame.id));window.clearTimeout(pending.timer);pending.cleanup();
-        pending.resolve(Response.json(frame.body,{status:Number(frame.status),headers:{"Cache-Control":"no-store"}}));
+        const headers=new Headers({"Cache-Control":"no-store","X-Group-Transport":"websocket",
+          "X-Group-Queue-Ms":String(pending.sentAt-pending.queuedAt),"X-Group-Roundtrip-Ms":String(performance.now()-pending.sentAt)});
+        const metrics=frame.metrics as Record<string,unknown>|undefined;
+        for(const name of ["server-timing","x-request-id","x-group-payload-bytes","x-group-db-ops","x-group-db-statements"]){
+          const value=metrics?.[name];if(typeof value==="string"&&value.length<=4096)headers.set(name,value);
+        }
+        pending.resolve(Response.json(frame.body,{status:Number(frame.status),headers}));
       }
     };
     socket.onerror=()=>socket.close();
@@ -50,6 +56,7 @@ class GroupSocket {
   }
   request(path:string,method:string,body:Record<string,unknown>,init?:RequestInit):Promise<Response>{
     // A connection serializes mutations and reads. Retry uses the caller's original operation key.
+    const queuedAt=performance.now();
     const execute=()=>new Promise<Response>((resolve,reject)=>{
       if(init?.signal?.aborted){reject(init.signal.reason);return;}
       if(!this.ready||!this.socket){reject(new TypeError("WebSocket not ready"));return;}
@@ -57,7 +64,7 @@ class GroupSocket {
       const abort=()=>{const pending=this.pending.get(id);if(!pending)return;this.pending.delete(id);window.clearTimeout(pending.timer);pending.cleanup();reject(init?.signal?.reason??new TypeError("WebSocket aborted"));};
       const cleanup=()=>init?.signal?.removeEventListener("abort",abort);
       const timer=window.setTimeout(()=>{this.pending.delete(id);cleanup();reject(new TypeError("WebSocket response timeout"));this.socket?.close();},7_000);
-      this.pending.set(id,{resolve,reject,timer,cleanup});init?.signal?.addEventListener("abort",abort,{once:true});
+      this.pending.set(id,{resolve,reject,timer,cleanup,queuedAt,sentAt:performance.now()});init?.signal?.addEventListener("abort",abort,{once:true});
       try{this.socket.send(JSON.stringify({type:"request",id,path,method,body,idempotencyKey:body.idempotencyKey??new Headers(init?.headers).get("idempotency-key")}));}catch{window.clearTimeout(timer);this.pending.delete(id);cleanup();reject(new TypeError("WebSocket send failed"));this.socket.close();}
     });
     if(method!=="POST"||body.action==="presence-heartbeat")return execute();

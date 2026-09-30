@@ -4,7 +4,7 @@
     "reason": "Server-side group session control and localized errors; question and answer values are fetched at runtime, not embedded."
   },
   "apps/backend/src/modules/group-exams/group-exam.service.ts": {
-    "sha256": "cc83b4709537cfdb67250e1149d0f0f39e56363545e890de5af1353f305ec4af",
+    "sha256": "8db839c6f42207fd77c41e0ef30c30e2652d30caff3050e276f8411fbf07c76c",
     "reason": "Runtime study or group exam control and Korean UI labels. Content and answers are read from the authenticated database; no private question bank is embedded."
   },
   "apps/backend/src/modules/skct-personal/skct-personal-release-admin.ts": {
@@ -40,7 +40,7 @@
     "reason": "Administrator form labels and dynamic database-backed content rendering; no fixed question, choice or answer rows."
   },
   "apps/frontend/src/features/group-exams/group-exam-client.tsx": {
-    "sha256": "d14d30bec35833c27aa35a13ac8af9e766d276be4008511616c1b4dfd0eec26c",
+    "sha256": "ad885de3f40181e4ac4d5ae3f0f85f824cbd2a6ec0636ea43c6cd04d0c767c95",
     "reason": "Runtime study or group exam control and Korean UI labels. Content and answers are read from the authenticated database; no private question bank is embedded."
   },
   "apps/frontend/src/features/study/components/local-practice/workbook.tsx": {
@@ -88,7 +88,7 @@
     "reason": "Learner interface labels and dynamic API-backed question rendering; no embedded released prompt or answer key."
   },
   "tests/e2e/group-ux.spec.ts": {
-    "sha256": "7db22927221acb54dd606af3474c940168f4c99a2f855a651613aca4622a2f55",
+    "sha256": "18c412cb183f30d71724c1e2b636203522f4ed4e4eba5bf6d692a84dc618b1eb",
     "reason": "Synthetic local UI fixtures for quota, save feedback, invitation spacing and result colors. All prompts and choices are toy examples written for tests; no production question bank, user records or secrets."
   }
 }

@@ -1,8 +1,10 @@
 "use client";
 import { useState } from "react";
 import "./skct-exam-tools.css";
-export default function SkctExamTools() {
-  const [memo,setMemo] = useState("");
+export default function SkctExamTools({memoKey = "exam"}: {memoKey?: string}) {
+  const [memoState,setMemoState] = useState({key:memoKey,text:""});
+  const memo = memoState.key === memoKey ? memoState.text : "";
+  const setMemo = (text: string) => setMemoState({key:memoKey,text});
   const [display,setDisplay] = useState("0");
   const [base,setBase] = useState<number | null>(null);
   const [operator,setOperator] = useState("");

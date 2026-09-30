@@ -1,7 +1,10 @@
+import { AUTHENTICATED_USER_EMAIL_HEADER } from "@shared/auth/authenticated-user";
 import { response, string, integer, idempotencyKey, sha256, canonicalJson, rawInviteToken, parseAnswers, safeJson, payload, errorResponse } from "./group-exam-http";
 import { withGroupMetrics, groupMetricPhase } from "@backend/common/observability/group-exam-metrics";
 import { beginPreparedRunV2, createRunV2, GROUP_EXAM_COUNTDOWN_MS, v2Enabled, strictRepeatEnabled, v2Repository, maintainV2, currentV2, currentV2Fast, mutateV2, orderedResultV2 } from "./group-exam-v2.service";
 import {
+  normalizedEmail,
+  learnerUserHash,
   authorizeLearnerRequest,
   authorizeAdminRequest,
   verifyAdminMutationRequest,
@@ -397,15 +400,19 @@ async function getHandler(request: Request) {
 
     if (scope === "result") {
       const runId = string(url.searchParams.get("runId"), "시험 ID");
-      const run = await repository.runById(runId);
-      const self = await repository.participant(runId, authorization.userKey);
+      const [run, self, v2Contract] = await Promise.all([
+        repository.runById(runId), repository.participant(runId, authorization.userKey), v2Repository.contract(runId),
+      ]);
       if (!run || run.status !== "completed" || !self) {
         throw new GroupExamError(404, "공개된 결과를 찾을 수 없습니다.", "GROUP_RESULT_NOT_FOUND");
       }
       const stillMember = await repository.activeMembership(run.group_id, authorization.userKey);
-      const v2Contract = await v2Repository.contract(runId);
-      const orderedResults = v2Contract ? await orderedResultV2(runId, authorization.userKey, stillMember) : undefined;
-      const all = v2Contract ? [] : await repository.resultParticipants(runId);
+      const [orderedResults, all, personalReview, questionStats] = await Promise.all([
+        v2Contract ? orderedResultV2(runId, authorization.userKey, stillMember) : Promise.resolve(undefined),
+        v2Contract ? Promise.resolve([]) : repository.resultParticipants(runId),
+        repository.personalReview(runId, authorization.userKey),
+        stillMember ? repository.questionStatistics(runId) : Promise.resolve([]),
+      ]);
       const ranked = competitionRanks(all.map((item) => ({
         publicName: String(item.public_name_snapshot),
         score: Number(item.score ?? 0),
@@ -414,7 +421,7 @@ async function getHandler(request: Request) {
         self: item.user_key === authorization.userKey,
       })));
       const ranking = stillMember ? ranked : ranked.filter((item) => item.self);
-      const review = (await repository.personalReview(runId, authorization.userKey)).map((item) => ({
+      const review = personalReview.map((item) => ({
         position: item.position,
         area: item.area_code_snapshot,
         prompt: item.prompt_snapshot,
@@ -424,7 +431,7 @@ async function getHandler(request: Request) {
         explanation: item.explanation_snapshot,
         assets: safeJson(String(item.asset_refs_snapshot_json), []),
       }));
-      return response({ run: { id: run.id, groupId: run.group_id, completedAt: run.completed_at, questionCount:run.question_count_snapshot }, ranking, review, ...(orderedResults ? { contractVersion: 2, orderedResults } : {}) });
+      return response({ run: { id: run.id, groupId: run.group_id, completedAt: run.completed_at, questionCount:run.question_count_snapshot }, ranking, review, questionStats, ...(orderedResults ? { contractVersion: 2, orderedResults } : {}) });
     }
     throw new GroupExamError(404, "지원하지 않는 조회입니다.", "GROUP_SCOPE_INVALID");
   } catch (error) {
@@ -436,12 +443,29 @@ async function postHandler(request: Request) {
   if (!enabled()) return unavailable();
   const mutationError = verifyUserMutationRequest(request);
   if (mutationError) return mutationError;
-  const authorization = await account(request, true);
-  if (authorization instanceof Response) return authorization;
   let action = "unknown";
   try {
     const body = await payload(request);
     action = string(body.action, "작업", 40);
+    let progressPreflight: Awaited<ReturnType<typeof v2Repository.progressMutationSnapshot>> | undefined;
+    const email = normalizedEmail(request.headers.get(AUTHENTICATED_USER_EMAIL_HEADER));
+    // This header is populated only by authenticated HTTP/WS ingress. Overlap
+    // independent reads, but authorize every operation before using or returning
+    // a snapshot, including blocked-account and maintenance checks.
+    const prefetch = (action === "question-advance" || action === "run-submit") && email;
+    let authorization: Awaited<ReturnType<typeof account>>;
+    if (prefetch) {
+      const runId = string(body.runId, "시험 ID");
+      const key = idempotencyKey(request, body);
+      const position = Number(body.position);
+      const userKey = await learnerUserHash(email);
+      [authorization, progressPreflight] = await Promise.all([
+        account(request, true),
+        groupMetricPhase("preflight", () => v2Repository.progressMutationSnapshot(runId, userKey, action, key,
+          Number.isInteger(position) && position >= 0 && position < 500 ? position + 1 : 0)),
+      ]);
+    } else authorization = await account(request, true);
+    if (authorization instanceof Response) return authorization;
     const now = new Date().toISOString();
     const userKey = authorization.userKey;
 
@@ -629,7 +653,7 @@ async function postHandler(request: Request) {
       const runId = string(body.runId, "시험 ID");
       const key = idempotencyKey(request, body);
       const candidatePosition = Number(body.position);
-      const preflight = await v2Repository.progressMutationSnapshot(runId, userKey, action, key,
+      const preflight = progressPreflight ?? await v2Repository.progressMutationSnapshot(runId, userKey, action, key,
         Number.isInteger(candidatePosition) && candidatePosition >= 0 && candidatePosition < 500 ? candidatePosition + 1 : 0);
       if (preflight.contract) {
         const position = integer(body.position, "문항 위치", 0, 499);
@@ -639,9 +663,8 @@ async function postHandler(request: Request) {
         const digestPayload = { runId, position, expectedProgressRevision, answers: answers ?? null, expectedAnswerRevision: expectedAnswerRevision ?? null };
         const result = { submitted: mutationAction === "run-submit", advanced: mutationAction === "question-advance", resultAvailable: false };
         return await idempotentMutation(request, body, userKey, action, digestPayload, result, 200, now, async (idempotency) => {
-          await mutateV2({ runId, userKey, action: mutationAction, position, expectedProgressRevision, idempotency, now: new Date(now),
-            answer: answers ? { answers, expectedRevision: expectedAnswerRevision!, operationId: crypto.randomUUID(), hash: await sha256(JSON.stringify(answers)) } : undefined,
-            preflight });
+          const answer = answers ? { answers, expectedRevision: expectedAnswerRevision!, operationId: crypto.randomUUID(), hash: await sha256(JSON.stringify(answers)) } : undefined;
+          await groupMetricPhase("commit", () => mutateV2({ runId, userKey, action: mutationAction, position, expectedProgressRevision, idempotency, now: new Date(now), answer, preflight }));
         }, { replay: preflight.replay, verifiedMutation: true });
       }
       if (action === "question-advance") throw new GroupExamError(409, "이 시험은 기존 공통 시간표로 진행합니다.", "GROUP_LEGACY_TIMELINE");

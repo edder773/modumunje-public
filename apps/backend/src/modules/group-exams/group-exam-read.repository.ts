@@ -528,6 +528,18 @@ export class GroupExamReadRepository extends DatabaseRepository {
     `).bind(runId).all<Record<string, unknown>>());
   }
 
+  async questionStatistics(runId: string) {
+    return results(await this.connection().prepare(`SELECT q.position,COUNT(p.user_key) AS participantCount,
+      SUM(CASE WHEN a.answer_json IS NOT NULL AND json_array_length(a.answer_json)>0
+        AND json(a.answer_json)=json(s.correct_answers_snapshot_json) THEN 1 ELSE 0 END) AS correctCount,
+      SUM(CASE WHEN a.answer_json IS NULL OR json_array_length(a.answer_json)=0 THEN 1 ELSE 0 END) AS unansweredCount
+      FROM study_group_exam_question_public q
+      JOIN study_group_exam_question_secret s ON s.run_id=q.run_id AND s.position=q.position
+      JOIN study_group_exam_participants p ON p.run_id=q.run_id
+      LEFT JOIN study_group_exam_answers a ON a.run_id=q.run_id AND a.position=q.position AND a.user_key=p.user_key
+      WHERE q.run_id=? GROUP BY q.position ORDER BY q.position`).bind(runId).all<Record<string, unknown>>());
+  }
+
   async personalReview(runId: string, userKey: string) {
     return results(await this.connection().prepare(`
       SELECT q.position, q.area_code_snapshot, q.prompt_snapshot, q.choices_snapshot_json, q.asset_refs_snapshot_json,

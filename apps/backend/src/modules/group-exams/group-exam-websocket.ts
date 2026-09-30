@@ -87,7 +87,12 @@ export async function handleGroupExamWebSocket(request:Request):Promise<Response
     if(mutation&&busy){send(client,{type:"response",id,status:429,body:{error:"저장 중입니다. 잠시 후 다시 시도해 주세요."}});return;}
     if(mutation)busy=true;try{
       const response=await authenticatedCall(request,target.pathname+target.search,method,body,String(frame.idempotencyKey??""));
-      const result=await response.json();send(client,{type:"response",id,status:response.status,body:result});
+      const result=await response.json();
+      const metrics:Record<string,string>={};
+      for(const name of ["server-timing","x-request-id","x-group-payload-bytes","x-group-db-ops","x-group-db-statements"]){
+        const value=response.headers.get(name);if(value&&value.length<=4096)metrics[name]=value;
+      }
+      send(client,{type:"response",id,status:response.status,body:result,metrics});
       if(response.status===401||response.status===403){cleanup();return;}
       if(response.ok&&mutation&&!["question-advance","answer-save","settings-update","invite-create"].includes(String(body?.action)))client.invalidate();
     }catch{send(client,{type:"response",id,status:503,body:{error:"시험 상태를 확인하지 못했습니다. 같은 요청으로 다시 시도해 주세요."}});}finally{if(mutation)busy=false;}

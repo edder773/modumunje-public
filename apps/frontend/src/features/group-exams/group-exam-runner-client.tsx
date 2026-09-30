@@ -32,6 +32,7 @@ export function GroupExamRunnerClient({runId}:{runId:string}){
   const countdownRefreshNotBefore=useRef(0);
   const countdownArmed=useRef(false);
   const beginning=useRef(false);
+  const advanceView=useRef<{position:number;started:number}|null>(null);
   const [current,setCurrent]=useState<Current|null>(null);
   const [display,setDisplay]=useState<Json|null>(null);
   const [answers,setAnswers]=useState<number[]>([]);
@@ -100,7 +101,17 @@ export function GroupExamRunnerClient({runId}:{runId:string}){
       return;
     }
     appliedSequence.current=++loadSequence.current;
-    await Promise.all([deleteQueue(claimed.queueId).catch(()=>undefined),deleteDraft(runId,Number(claimed.body.position)).catch(()=>undefined)]);
+    const windowRows=(result.publicQuestionWindow as Json[]|undefined)??[];
+    const question=windowRows[0]??null;
+    const directAdvance=claimed.attemptCount===1&&claimed.action==="question-advance"&&!result.submitted;
+    // Show only the acknowledged next snapshot. Keep further mutation and
+    // answer editing disabled until durable queue cleanup and draft adoption.
+    if(directAdvance){
+      setCurrent(value=>value?{...value,question,publicQuestionWindow:windowRows,progress:{...value.progress,position:result.position,revision:result.progressRevision,deadlineAt:result.deadlineAt}}:value);
+      setDisplay(question);setAnswers((question?.answer_json as number[]|undefined)??[]);
+    }
+    const nextDraft=directAdvance&&question?loadDraft(runId,Number(question.position)).catch(()=>null):Promise.resolve(null);
+    const [draft]=await Promise.all([nextDraft,deleteQueue(claimed.queueId).catch(()=>undefined),deleteDraft(runId,Number(claimed.body.position)).catch(()=>undefined)]);
     pendingRef.current=false;setPending(null);channel.current?.postMessage({kind:"ack",queueId:claimed.queueId,idempotencyKey:claimed.idempotencyKey,payloadDigest:claimed.payloadDigest});
     window.dispatchEvent(new CustomEvent("group-exam-interaction",{detail:{kind:"ack",durationMs:performance.now()-started,attempts:claimed.attemptCount}}));
     if(claimed.attemptCount>1||claimed.action==="answer-save"){
@@ -108,9 +119,6 @@ export function GroupExamRunnerClient({runId}:{runId:string}){
       return;
     }
     if(Boolean(result.submitted)){setDisplay(null);setStatus("complete");setMessage("✓ 답안을 제출했습니다. 모든 참가자의 응시가 끝나면 결과를 확인할 수 있습니다.");void load().catch(()=>undefined);return;}
-    const windowRows=(result.publicQuestionWindow as Json[]|undefined)??[];
-    const question=windowRows[0]??null;
-    const draft=question?await loadDraft(runId,Number(question.position)).catch(()=>null):null;
     setCurrent(value=>value?{...value,question,publicQuestionWindow:windowRows,progress:{...value.progress,position:result.position,revision:result.progressRevision,deadlineAt:result.deadlineAt}}:value);
     setDisplay(question);setAnswers(draft??(question?.answer_json as number[]|undefined)??[]);setStatus("ready");setMessage("✓ 답안을 저장했습니다.");
   },[load,markReadbackUnavailable,runId]);
@@ -169,11 +177,16 @@ export function GroupExamRunnerClient({runId}:{runId:string}){
     return()=>{stopped=true;window.clearTimeout(timer);window.removeEventListener("focus",refresh);document.removeEventListener("visibilitychange",visibility);};
   },[load,pending,status]);
   const displayPosition=display?.position;
-  useEffect(()=>{if(displayPosition!==undefined){const frame=requestAnimationFrame(()=>heading.current?.focus());return()=>cancelAnimationFrame(frame);}},[displayPosition]);
+  useEffect(()=>{if(displayPosition!==undefined){const frame=requestAnimationFrame(()=>{
+    heading.current?.focus();
+    if(advanceView.current?.position===Number(displayPosition)){
+      window.dispatchEvent(new CustomEvent("group-exam-interaction",{detail:{kind:"next-view",durationMs:performance.now()-advanceView.current.started}}));advanceView.current=null;
+    }
+  });return()=>cancelAnimationFrame(frame);}},[displayPosition]);
 
   async function advance(submit=false){
     if(!current||!display||pending||status==="syncing"||!online)return;
-    const position=Number(display.position);const isV2=Number(current.run.contractVersion)===2;
+    const position=Number(display.position);advanceView.current={position:position+1,started:performance.now()};const isV2=Number(current.run.contractVersion)===2;
     const action:QueuedGroupExamMutation["action"]=isV2?(submit?"run-submit":"question-advance"):(submit?"run-submit":"answer-save");
     const idempotencyKey=key(action);const queueId=`${runId}:${position}:${action}`;
     const body=isV2
@@ -216,12 +229,12 @@ export function GroupExamRunnerClient({runId}:{runId:string}){
           <h1 ref={heading} tabIndex={-1} id="runner-question-title">{Number(display.position)+1}번 문항</h1>
           <QuestionRenderer question={display}/>
           <fieldset><legend>답안 선택</legend>{choices.map((choice,index)=><label key={index} className={styles.choice}>
-            <input type="radio" name={`answer-${String(display.position)}`} checked={answers[0]===index} onChange={()=>{setAnswers([index]);void saveDraft(runId,Number(display.position),[index]);}}/>
+            <input type="radio" disabled={status==="syncing"} name={`answer-${String(display.position)}`} checked={answers[0]===index} onChange={()=>{setAnswers([index]);void saveDraft(runId,Number(display.position),[index]);}}/>
             <span className={styles.choiceNumber} aria-hidden="true">{["①","②","③","④","⑤"][index]??index+1}</span><span>{String(choice).replace(/^[①②③④⑤]\s*/u,"")}</span>
           </label>)}</fieldset>
           <div className={styles.runnerActions}>{isV2?<button disabled={!online||Boolean(pending)||status==="syncing"||answers.length===0} onClick={()=>void advance(Number(display.position)+1===Number(current?.run.questionCount))}>{Number(display.position)+1===Number(current?.run.questionCount)?"답안 제출":"다음 문항 →"}</button>:<><button disabled={!online||Boolean(pending)||status==="syncing"||answers.length===0} onClick={()=>void advance(false)}>답안 저장</button><button className={styles.secondary} disabled={!online||Boolean(pending)||status==="syncing"} onClick={()=>void advance(true)}>응시 완료</button></>}{status==="retry"&&pending&&<button className={styles.secondary} onClick={()=>void retryPending()}>다시 시도</button>}{status==="retry"&&pending&&<button className={styles.secondary} onClick={()=>void discardPending()}>최신 문항으로 돌아가기</button>}{status==="retry"&&!pending&&<button className={styles.secondary} onClick={()=>void load()}>다시 불러오기</button>}</div>
         </section>
-        <SkctExamTools key={runId}/>
+        <SkctExamTools memoKey={`${runId}:${String(display.position)}`}/>
       </div>
     </>}
     {!display&&status!=="countdown"&&<section className={styles.countdown}><h1>{status==="complete"?"응시 완료":"시험 상태 확인"}</h1><p>{message}</p>{status==="retry"&&!pending&&<button onClick={()=>void load().catch(()=>markReadbackUnavailable())}>다시 불러오기</button>}{status==="complete"&&<><button disabled={current?.run.status!=="completed"} onClick={()=>router.push(`/groups/results/${encodeURIComponent(runId)}`)}>결과 보기</button><button className={styles.secondary} onClick={()=>router.push("/groups")}>그룹 대기실</button></>}</section>}

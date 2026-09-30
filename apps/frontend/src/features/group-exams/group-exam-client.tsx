@@ -66,6 +66,10 @@ export function GroupExamClient() {
   const settingsPendingAttemptsRef = useRef(new Map<string, SettingsPendingAttempt>());
   const [settingsPendingAttempts, setSettingsPendingAttempts] = useState(new Map<string, SettingsPendingAttempt>());
   const selectedIdRef = useRef("");
+  const groupsRef = useRef(groups);
+  useEffect(() => { groupsRef.current = groups; }, [groups]);
+  const createForm = useRef<HTMLDetailsElement>(null);
+  const createName = useRef<HTMLInputElement>(null);
   const hydratedDetailId = useRef("");
   const syncRequestSequence = useRef(0);
   const syncPhase = useRef("idle");
@@ -80,18 +84,43 @@ export function GroupExamClient() {
     setSettingsPendingAttempts(next);
   }, []);
 
+  const resetSelection = useCallback((groupId: string) => {
+    selectedIdRef.current = groupId;
+    syncRequestSequence.current += 1;
+    hydratedDetailId.current = "";
+    setDetail(null); setMembers([]); setSync(null);
+    syncRef.current = null; syncPhase.current = "idle";
+    setPresenceHealth({ status: "unknown", lastSuccessAt: null });
+    setSelectedId(groupId);
+  }, []);
+  const forgetGroup = useCallback((groupId: string) => {
+    const next = groupsRef.current.filter(group => group.id !== groupId);
+    groupsRef.current = next; setGroups(next);
+    updateSettingsPendingAttempt(groupId, null);
+    if (selectedIdRef.current === groupId) resetSelection(String(next[0]?.id ?? ""));
+  }, [resetSelection, updateSettingsPendingAttempt]);
+
   const refresh = useCallback(async () => {
     const body = await api("/api/group-exams?scope=groups");
     const next = (body.groups as AnyRecord[]) ?? [];
     setGroups(next);
     setOwnedActiveCount(Number(body.ownedActiveCount ?? next.filter(g => g.is_owner).length));
     if (body.capabilities) setCapabilities(body.capabilities as typeof capabilities);
-    setSelectedId((value) => value || String(next[0]?.id ?? ""));
-  }, []);
+    groupsRef.current = next;
+    if (!next.some(group => group.id === selectedIdRef.current)) resetSelection(String(next[0]?.id ?? ""));
+    return next;
+  }, [resetSelection]);
 
   const refreshDetail = useCallback(async (groupId: string) => {
     if (!groupId) return null;
-    const body = await api(`/api/group-exams?scope=group&groupId=${encodeURIComponent(groupId)}`);
+    let body: AnyRecord;
+    try { body = await api(`/api/group-exams?scope=group&groupId=${encodeURIComponent(groupId)}`); }
+    catch (error) {
+      if (error instanceof GroupApiError && error.code === "GROUP_NOT_FOUND") {
+        forgetGroup(groupId); return null;
+      }
+      throw error;
+    }
     const nextDetail = body.group as AnyRecord;
     const pending = settingsPendingAttemptsRef.current.get(groupId);
     if (pending && confirmsGroupSettingsReadback(nextDetail, pending.submission)) {
@@ -102,22 +131,15 @@ export function GroupExamClient() {
       setMembers((body.members as AnyRecord[]) ?? []);
     }
     return nextDetail;
-  }, [updateSettingsPendingAttempt]);
+  }, [forgetGroup, updateSettingsPendingAttempt]);
 
   const selectGroup = useCallback((groupId: string) => {
     if (groupId === selectedIdRef.current) {
       if (!detail) void refreshDetail(groupId).catch(error => setNotice(error instanceof Error ? error.message : "그룹 상세를 불러오지 못했습니다."));
       return;
     }
-    selectedIdRef.current = groupId;
-    setDetail(null);
-    setMembers([]);
-    setSync(null);
-    syncRef.current = null;
-    syncPhase.current = "idle";
-    setPresenceHealth({ status: "unknown", lastSuccessAt: null });
-    setSelectedId(groupId);
-  }, [detail, refreshDetail]);
+    resetSelection(groupId);
+  }, [detail, refreshDetail, resetSelection]);
 
   useEffect(() => {
     let active = true;
@@ -178,6 +200,11 @@ export function GroupExamClient() {
       if (action === "settings-update" && body.settings) {
         latestDetail = { ...detail, ...(body.settings as AnyRecord) };
         if (selectedIdRef.current === detailGroupId) setDetail(latestDetail);
+      } else if (action === "group-delete" || action === "group-leave") {
+        if (detail?.is_owner) setOwnedActiveCount(count => Math.max(0, count - 1));
+        forgetGroup(detailGroupId);
+        setNotice(action === "group-delete" ? "그룹을 삭제했습니다." : "그룹에서 나왔습니다.");
+        void refresh().catch(() => undefined);
       } else if (action === "run-start") {
         const run = body.run as AnyRecord | undefined;
         const runId = String(run?.id ?? "");
@@ -249,12 +276,15 @@ export function GroupExamClient() {
       return true;
     } catch (error) {
       if (selectedIdRef.current === requestGroupId) {
+        if (error instanceof GroupApiError && error.code === "GROUP_NOT_FOUND") {
+          forgetGroup(requestGroupId); void refresh().catch(() => undefined); return true;
+        }
         setPresenceHealth((state) => ({ status: "degraded", lastSuccessAt: state.lastSuccessAt }));
         setNotice(error instanceof Error ? error.message : "그룹 상태를 동기화하지 못했습니다.");
       }
       return false;
     }
-  }, []);
+  }, [forgetGroup, refresh]);
 
   useEffect(() => {
     if(!selectedId||!capabilities.webSocket)return;
@@ -333,9 +363,9 @@ export function GroupExamClient() {
       <header className={styles.hero}>
         <div><p className={styles.eyebrow}>함께 푸는 SKCT</p><h1>그룹 모의시험</h1>
         <p>같은 문제, 같은 시작 시각. 개인학습 문제은행의 다섯 영역을 함께 풀어 보세요.</p></div>
-        <span role="status" className={deviceOnline ? styles.siteOnline : styles.siteOffline}>
+        {selectedId && <span role="status" className={deviceOnline ? styles.siteOnline : styles.siteOffline}>
           {deviceOnline ? capabilities.webSocket && socketStatus === "connected" ? "● 실시간 연결" : "연결 확인 중" : "오프라인 · 재연결 대기"}
-        </span>
+        </span>}
       </header>
       {notice && <p className={styles.notice} role="status" aria-live="polite">{notice}</p>}
       <section className={styles.workspace}>
@@ -346,8 +376,8 @@ export function GroupExamClient() {
           <label>그룹 선택<select value={selectedId} onChange={(event) => selectGroup(event.target.value)}>
             <option value="">그룹을 선택하세요</option>{groups.map((group) => <option key={String(group.id)} value={String(group.id)}>{String(group.name)}</option>)}
           </select></label>
-          <details className={styles.createGroup} open={groups.length === 0}><summary>새 그룹 만들기</summary><form action={createGroup} className={styles.stack}>
-            <label>그룹 이름<input name="name" minLength={2} maxLength={80} required /></label>
+          <details ref={createForm} className={styles.createGroup} open={groups.length === 0}><summary>새 그룹 만들기</summary><form action={createGroup} className={styles.stack}>
+            <label>그룹 이름<input ref={createName} name="name" minLength={2} maxLength={80} required /></label>
             <label>표시 이름<input name="publicName" minLength={2} maxLength={40} required /></label>
             <button disabled={pendingActions.has("group-create") || ownedActiveCount >= 3}>그룹 만들기</button>
           </form></details>
@@ -355,6 +385,15 @@ export function GroupExamClient() {
         </aside>
 
         <section className={styles.mainStage}>
+        {pageState === "ready" && !selectedId && <article className={`${styles.card} ${styles.emptyStage}`}>
+          <div className={styles.emptyIllustration} aria-hidden="true"><span>01</span><span>02</span><span>03</span></div>
+          <p className={styles.eyebrow}>함께 시작하는 모의시험</p><h2>{groups.length ? "함께 풀 그룹을 선택하세요" : "첫 그룹을 만들어 함께 풀어 보세요"}</h2>
+          <p>그룹을 만들고 초대 링크를 공유하면 같은 문제를 같은 시각에 풀 수 있습니다.</p>
+          <div className={styles.emptyAreas}>{GROUP_EXAM_AREAS.map(area => <span key={area}>{area}</span>)}</div>
+          <button onClick={() => { if (createForm.current) createForm.current.open = true; createName.current?.focus(); }}>새 그룹 만들기</button>
+          <p className={styles.emptyHint}>초대 링크를 받았다면 해당 링크에서 그룹에 참여할 수 있습니다.</p>
+        </article>}
+
         {detail && <article className={`${styles.card} ${styles.contextCard}`}>
           <div className={styles.contextHeader}><div><p className={styles.eyebrow}>현재 그룹</p><h2>{String(detail.name)}</h2>
           <p>현재 {String(detail.active_members)}명{Number(detail.reserved_invites)>0 ? ` · 초대 예약 ${String(detail.reserved_invites)}명` : ""} · 정원 {String(detail.member_limit)}명</p></div>
@@ -377,7 +416,7 @@ export function GroupExamClient() {
           {isOwner && <OwnerControls key={selectedId} pendingActions={pendingActions} capabilities={capabilities} groupId={selectedId} detail={detail}
             members={members} phase={phase} mutate={mutate} pending={settingsPendingAttempts.get(selectedId) ?? null}
             onPendingChange={(attempt) => updateSettingsPendingAttempt(selectedId, attempt)} reloadDetail={refreshDetail} />}
-          {<button className={styles.secondary} disabled={pendingActions.has("group-leave")} onClick={() => mutate("group-leave", { groupId: selectedId })}>그룹 나가기</button>}
+          {!isOwner && <button className={styles.leaveButton} disabled={pendingActions.has("group-leave")} onClick={() => mutate("group-leave", { groupId: selectedId })}>그룹 나가기</button>}
         </article>}
 
         {selectedId && <article className={`${styles.card} ${styles.examStage}`}>
@@ -442,7 +481,7 @@ function OwnerControls({ pendingActions, capabilities, groupId, detail, members,
   }
   return <div className={styles.stack}>
     <h3>대표 관리</h3>
-    <div className={styles.actions}><button className={styles.secondary} onClick={() => { setDraft(groupSettingsDraft(detail,pending?.submission)); setSettingsStatus(pending ? "unconfirmed" : "idle"); setModal("settings"); }}>그룹 설정</button><button className={styles.secondary} onClick={() => setModal("invite")}>초대 링크</button><button disabled={startBlocked} onClick={() => setModal("start")}>{quotaRemaining <= 0 ? "오늘 응시 완료" : "시험 시작"}</button><button className={styles.danger} onClick={()=>setDeleteOpen(true)}>그룹 삭제</button></div>
+    <div className={styles.ownerControls}><div className={styles.ownerPrimary}><p>참가자가 준비되면 시험을 시작하세요.</p><button disabled={startBlocked} onClick={() => setModal("start")}>{quotaRemaining <= 0 ? "오늘 응시 완료" : "시험 시작"}</button></div><div className={styles.ownerSettings}><button className={styles.secondary} onClick={() => { setDraft(groupSettingsDraft(detail,pending?.submission)); setSettingsStatus(pending ? "unconfirmed" : "idle"); setModal("settings"); }}>그룹 설정</button><button className={styles.secondary} onClick={() => setModal("invite")}>초대 링크</button></div><div className={styles.ownerUtility}><button className={styles.leaveButton} disabled={pendingActions.has("group-leave")} onClick={() => mutate("group-leave", { groupId })}>그룹 나가기</button><button className={styles.deleteButton} onClick={()=>setDeleteOpen(true)}>그룹 삭제</button></div></div>
     {modal === "settings" && <GroupExamModal title="그룹 설정" onClose={() => setModal(null)}>
     <form onSubmit={async (event) => {
       event.preventDefault();
