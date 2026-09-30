@@ -74,6 +74,38 @@ export class HealthRepository extends DatabaseRepository {
   }
 
   async readGroupExamReadiness() {
+    // Group exams prefer the active personal bank. Immutable legacy mirrors
+    // remain available for old results and must not make that bank unhealthy.
+    const personal = await this.connection().prepare(`
+      WITH active_release AS (
+        SELECT id, content_sha256, item_count FROM skct_personal_releases
+        WHERE status = 'ACTIVE' AND item_count = 300
+        ORDER BY created_at DESC, id DESC LIMIT 1
+      )
+      SELECT
+        (SELECT COUNT(*) FROM skct_personal_releases WHERE status='ACTIVE' AND item_count=300) AS active_release_count,
+        (SELECT id FROM active_release) AS release_id,
+        (SELECT content_sha256 FROM active_release) AS release_sha256,
+        (SELECT item_count FROM active_release) AS declared_eligible_count,
+        (SELECT COUNT(*) FROM skct_personal_public_items p JOIN active_release r ON r.id=p.release_id) AS public_count,
+        (SELECT COUNT(*) FROM skct_personal_secret_items s JOIN active_release r ON r.id=s.release_id) AS secret_count,
+        (SELECT COUNT(*) FROM skct_personal_public_items p JOIN skct_personal_secret_items s
+          USING(release_id,source_item_id) JOIN active_release r ON r.id=p.release_id) AS selectable_count,
+        (SELECT COUNT(*) FROM (
+          SELECT p.unit_id FROM skct_personal_public_items p JOIN active_release r ON r.id=p.release_id
+          WHERE p.unit_id IN ('U01','U02','U03','U04','U05') GROUP BY p.unit_id HAVING COUNT(*)=60
+        )) AS complete_area_count
+    `).first<Record<string, unknown>>();
+    if (personal?.release_id) {
+      const activeReleaseCount=Number(personal.active_release_count), declaredEligibleCount=Number(personal.declared_eligible_count);
+      const publicCount=Number(personal.public_count), secretCount=Number(personal.secret_count), selectableCount=Number(personal.selectable_count);
+      return {
+        ready: activeReleaseCount===1 && declaredEligibleCount===300 && publicCount===300
+          && secretCount===300 && selectableCount===300 && Number(personal.complete_area_count)===5,
+        activeReleaseCount, releaseId:String(personal.release_id), releaseSha256:String(personal.release_sha256),
+        declaredEligibleCount, quarantineCount:0, publicCount, secretCount, selectableCount,
+      };
+    }
     const row = await this.connection().prepare(`
       WITH active_release AS (
         SELECT id, release_sha256, eligible_count, quarantine_count
