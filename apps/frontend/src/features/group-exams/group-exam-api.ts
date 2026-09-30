@@ -1,3 +1,4 @@
+import { groupSocketRequest } from "./group-exam-socket";
 import { beginGroupRequest } from "./group-exam-performance";
 
 type AnyRecord = Record<string, unknown>;
@@ -102,7 +103,8 @@ export async function groupExamApi<T extends AnyRecord = AnyRecord>(url: string,
     let result: Response | undefined;
     let metricFinished = false;
     try {
-      result = await fetch(url, { ...init, headers, cache: "no-store", signal });
+      const socketRequest = attempt === 0 ? groupSocketRequest(url, { ...init, headers, signal }) : null;
+      result = socketRequest ? await socketRequest : await fetch(url, { ...init, headers, cache: "no-store", signal });
       metric.headers();
       const text = await result.text();
       metric.finish(result);

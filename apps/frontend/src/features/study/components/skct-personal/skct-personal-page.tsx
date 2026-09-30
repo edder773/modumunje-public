@@ -7,6 +7,9 @@ import Modal from "@frontend/features/study/components/modal";
 import MarkdownRenderer from "@frontend/features/content/components/markdown-renderer";
 import { dateTimeLabel } from "@shared/date/korea-date.mjs";
 import { SKCT_LEARNING_UNITS, SKCT_SECTION_LINKS, SkctLearningHome, SkctLearningSetup } from "./skct-learning-entry";
+import { SKCT_MOCK_SECTION_QUESTIONS, type SkctFullMock } from "@shared/study/skct-personal-exam";
+import { SkctLearningStatistics, type SkctUnitStatistics } from "./skct-learning-statistics";
+import SkctExamTools from "./skct-exam-tools";
 import "./skct-personal.css";
 
 type Question = { sourceItemId: string; unitId: string; passage: string | null; question: string;
@@ -18,13 +21,13 @@ type Item = { position: number; sourceItemId: string; question: Question; select
 type Attempt = { id: string; releaseId: string; unitId: string; mode: "practice" | "mock";
   status: "in_progress" | "submitted"; revision: number; activePosition: number | null;
   activeSince: string | null; lastOperationId?: string | null;
-  startedAt: string; submittedAt: string | null; items: Item[]; correctCount: number | null };
+  startedAt: string; submittedAt: string | null; items: Item[]; correctCount: number | null; fullMock?: SkctFullMock | null };
 type View = "home" | "practice" | "mock" | "records";
 type Home = { available: boolean; units: { id: string; name: string }[] };
 type RecordRow = { id: string; unit_id: string; mode: string; status: string; started_at: string;
-  question_count: number; answered_count: number; elapsed_seconds: number; correct_count: number };
+  question_count: number; answered_count: number; finalized_count?: number; full_mock?: number; elapsed_seconds: number; correct_count: number };
 type Pending = { action: string; attemptId: string; operationId: string; revision: number;
-  position?: number; choiceIndex?: number; practiceFlowVersion?: 2; activePosition?: number | null;
+  position?: number; choiceIndex?: number; practiceFlowVersion?: 2 | 3; activePosition?: number | null;
   answers?: { position: number; choiceIndex: number }[]; times?: { position: number; seconds: number }[] };
 type MockLocal = { revision: number; position: number; choices: Record<number, number>;
   deltas: Record<number, number> };
@@ -101,6 +104,8 @@ function QuestionContent({ item }: { item: Item }) {
   const q = item.question;
   const displayedQuestion = displaySourceMarkdown(q.question);
   return <div className="skct-question-content">
+    <h3 id="skct-current-question" tabIndex={-1}>{item.position}번 문항</h3>
+    <div className="skct-question-body"><MarkdownRenderer value={displayedQuestion} /></div>
     {q.passage && <section className="skct-passage" aria-label="제시문"><p>{q.passage}</p></section>}
     {q.stimulus && <section className="skct-stimulus" aria-label="문제 자료"><MarkdownRenderer value={displaySourceMarkdown(q.stimulus)} /></section>}
     {q.insertionSentence && <p className="skct-condition"><strong>삽입 문장</strong> {q.insertionSentence}</p>}
@@ -114,8 +119,6 @@ function QuestionContent({ item }: { item: Item }) {
       <img src={url} loading="lazy" alt={q.assetDescriptions?.[index] ?? `${q.unitId} ${q.sourceItemId} 문제 자료 ${index+1}`} />
       {q.assetDescriptions?.[index] && <figcaption><details><summary>그림의 텍스트 설명</summary><p>{q.assetDescriptions[index]}</p></details></figcaption>}
     </figure>)}
-    <h3 id="skct-current-question">{item.position}번 문항</h3>
-    <div className="skct-question-body"><MarkdownRenderer value={displayedQuestion} /></div>
   </div>;
 }
 
@@ -126,6 +129,11 @@ export default function SkctPersonalPage({ session, view, initialAttemptId }: {
   const [selectedUnitId, setSelectedUnitId] = useState("U01");
   const [attempt, setAttempt] = useState<Attempt | null>(null);
   const [records, setRecords] = useState<RecordRow[] | null>(null);
+  const [statistics,setStatistics] = useState<SkctUnitStatistics[] | null>(null);
+  const [clockNow,setClockNow] = useState(() => Date.now());
+  const clockOffset = useRef(0);
+  const startRequest = useRef<string | null>(null);
+  const [showSkipConfirm,setShowSkipConfirm] = useState(false);
   const [recordsCursor, setRecordsCursor] = useState<string | null>(null);
   const [position, setPosition] = useState(1);
   const [busy, setBusy] = useState(false);
@@ -144,7 +152,11 @@ export default function SkctPersonalPage({ session, view, initialAttemptId }: {
   const tabId = useRef("");
   const feedbackRef = useRef<HTMLElement>(null);
   const authenticated = session.status === "active";
-  useEffect(() => { attemptRef.current = attempt; }, [attempt]);
+  useEffect(() => { attemptRef.current = attempt;
+    if (attempt?.fullMock) clockOffset.current = Date.parse(attempt.fullMock.serverNow)-Date.now();
+  }, [attempt]);
+  useEffect(() => { const timer = window.setInterval(() => setClockNow(Date.now()+clockOffset.current),1000);
+    return () => window.clearInterval(timer); }, []);
   const commitMockLocal = useCallback((id: string, action: MockLocalAction) => {
     const next = mockLocalReducer(mockLocalRef.current,action);
     mockLocalRef.current = next;
@@ -193,6 +205,7 @@ export default function SkctPersonalPage({ session, view, initialAttemptId }: {
     const data = await getJson(`/api/skct-personal?view=records${cursor ? `&cursor=${encodeURIComponent(cursor)}` : ""}`);
     setRecords(previous => cursor ? [...(previous ?? []), ...data.records] : data.records);
     setRecordsCursor(data.nextCursor ?? null);
+    setStatistics(data.statistics ?? []);
   }, [authenticated]);
   const loadAttempt = useCallback(async (id: string, expectedMode?: "practice" | "mock") => {
     const data = await getJson(`/api/skct-personal?view=attempt&id=${encodeURIComponent(id)}`);
@@ -243,6 +256,11 @@ export default function SkctPersonalPage({ session, view, initialAttemptId }: {
           pending = null;
         }
       } catch { /* pending replay below checks the original server revision */ }
+      if (data.attempt.fullMock) {
+        local = { ...local, position: data.attempt.activePosition ?? 1,
+          choices: Object.fromEntries(Object.entries(local.choices).filter(([key]) => Number(key) === data.attempt.activePosition)),
+          deltas: Object.fromEntries(Object.entries(local.deltas).filter(([key]) => Number(key) === data.attempt.activePosition)) };
+      }
       saveMockLocal(id,local);
       setPosition(local.position);
       setMockConflict(local.revision !== data.attempt.revision);
@@ -291,7 +309,7 @@ export default function SkctPersonalPage({ session, view, initialAttemptId }: {
           return;
         }
         const mode = view === "practice" || view === "mock" ? view : null;
-        const id = mode ? initialAttemptId ?? sessionStorage.getItem(attemptKey(mode)) ?? sessionStorage.getItem(legacyAttemptKey) : null;
+        const id = mode ? initialAttemptId : null;
         const [loaded, current] = await Promise.all([
           getJson("/api/skct-personal?view=home"),
           id && mode ? loadAttempt(id, mode).catch(error => {
@@ -348,7 +366,11 @@ export default function SkctPersonalPage({ session, view, initialAttemptId }: {
     if (hasPending) { setMessage("이전 저장을 먼저 확인해 주세요."); return; }
     setBusy(true); setMessage("");
     try {
-      const data = await postJson({ action: "start", unitId, mode });
+      startRequest.current ??= crypto.randomUUID();
+      const data = await postJson({ action: "start", unitId, mode, fresh: true,
+        operationId: startRequest.current, practiceFlowVersion: 3 });
+      startRequest.current = null;
+      window.history.replaceState(window.history.state,"",`${window.location.pathname}?attempt=${encodeURIComponent(data.attempt.id)}`);
       setAttempt(data.attempt); setPosition(data.attempt.activePosition ?? 1);
       attemptRef.current = data.attempt;
       setDraftChoices({});
@@ -369,7 +391,7 @@ export default function SkctPersonalPage({ session, view, initialAttemptId }: {
   const mutate = useCallback(async (action: Pending["action"], nextPosition?: number, choiceIndex?: number) => {
     if (!attempt || busy || hasPending || !claimLease(attempt.id)) return;
     const pending: Pending = { action, attemptId: attempt.id, operationId: crypto.randomUUID(), revision: attempt.revision,
-      ...(action === "answer" && attempt.mode === "practice" ? { practiceFlowVersion: 2 as const } : {}),
+      ...(attempt.mode === "practice" ? { practiceFlowVersion: 3 as const } : {}),
       ...(nextPosition ? { position: nextPosition } : {}), ...(choiceIndex ? { choiceIndex } : {}) };
     sessionStorage.setItem(pendingKey(attempt.id), JSON.stringify(pending));
     setHasPending(true);
@@ -379,12 +401,18 @@ export default function SkctPersonalPage({ session, view, initialAttemptId }: {
       sessionStorage.removeItem(pendingKey(attempt.id));
       setHasPending(false);
       setAttempt(data.attempt);
+      attemptRef.current = data.attempt;
+      if (data.attempt.fullMock) {
+        const next = data.attempt.activePosition ?? position;
+        setPosition(next);
+        saveMockLocal(data.attempt.id,{ revision: data.attempt.revision, position: next, choices: {}, deltas: {} });
+      }
       if ((action === "focus" || action === "append") && data.attempt.activePosition) setPosition(data.attempt.activePosition);
     } catch (error) {
       if (error instanceof ApiError && error.status >= 400 && error.status < 500) await resolveRejectedPending(attempt.id);
       else setMessage((error instanceof Error ? error.message : "저장하지 못했습니다.") + " 연결이 돌아오면 이 작업을 다시 시도합니다.");
     } finally { setBusy(false); }
-  }, [attempt, busy, hasPending, claimLease, resolveRejectedPending]);
+  }, [attempt, busy, hasPending, claimLease, resolveRejectedPending, position, saveMockLocal]);
   const updateMockLocal = useCallback((action: MockLocalAction) => {
     const state = attemptRef.current;
     const current = mockLocalRef.current;
@@ -427,7 +455,11 @@ export default function SkctPersonalPage({ session, view, initialAttemptId }: {
       const deltas = { ...latest.deltas };
       for (const answer of pending.answers ?? []) if (choices[answer.position] === answer.choiceIndex) delete choices[answer.position];
       for (const time of pending.times ?? []) deltas[time.position] = Math.max(0,(deltas[time.position] ?? 0)-time.seconds);
-      saveMockLocal(state.id,{ ...latest, revision: updated.revision, choices, deltas });
+      const checkpointPosition = updated.fullMock ? updated.activePosition ?? latest.position : latest.position;
+      if (updated.fullMock && checkpointPosition !== latest.position) { setPosition(checkpointPosition); }
+      saveMockLocal(state.id,{ ...latest, position: checkpointPosition, revision: updated.revision,
+        choices: updated.fullMock && checkpointPosition !== latest.position ? {} : choices,
+        deltas: updated.fullMock && checkpointPosition !== latest.position ? {} : deltas });
       sessionStorage.removeItem(pendingKey(state.id));
       setHasPending(false);
       setMessage("");
@@ -451,7 +483,8 @@ export default function SkctPersonalPage({ session, view, initialAttemptId }: {
     if (raw) void flushMockCheckpoint();
   }, [attempt, mockConflict, flushMockCheckpoint]);
   useEffect(() => {
-    if (!attempt || attempt.mode !== "mock" || attempt.status !== "in_progress" || readOnlyTab || mockConflict) return;
+    if (!attempt || attempt.mode !== "mock" || attempt.status !== "in_progress" || readOnlyTab || mockConflict
+      || attempt.fullMock && attempt.fullMock.phase !== "answering") return;
     let lastTick = Date.now();
     const timer = window.setInterval(() => {
       if (document.visibilityState !== "visible") { lastTick = Date.now(); return; }
@@ -464,7 +497,8 @@ export default function SkctPersonalPage({ session, view, initialAttemptId }: {
     return () => window.clearInterval(timer);
   }, [attempt, readOnlyTab, mockConflict, updateMockLocal]);
   useEffect(() => {
-    if (!attempt || attempt.mode !== "mock" || attempt.status !== "in_progress" || readOnlyTab || mockConflict) return;
+    if (!attempt || attempt.mode !== "mock" || attempt.status !== "in_progress" || readOnlyTab || mockConflict
+      || attempt.fullMock && attempt.fullMock.phase !== "answering") return;
     const timer = window.setInterval(() => void flushMockCheckpoint(),20_000);
     const visibility = () => { if (document.visibilityState === "hidden") void flushMockCheckpoint(true); };
     const pagehide = () => { void flushMockCheckpoint(true); };
@@ -566,9 +600,31 @@ export default function SkctPersonalPage({ session, view, initialAttemptId }: {
       } else setMessage((error instanceof Error ? error.message : "제출하지 못했습니다.") + " 연결이 돌아오면 다시 시도해 주세요.");
     } finally { submissionLockRef.current = false; setBusy(false); }
   }
+  useEffect(() => {
+    const exam = attempt?.fullMock;
+    if (!exam || attempt?.status !== "in_progress" || busy || hasPending || readOnlyTab || mockConflict || mockCheckpointInFlight.current) return;
+    const deadline = exam.phase === "break" ? exam.breakUntil : exam.sectionDeadlineAt;
+    if (deadline && clockNow >= Date.parse(deadline)) {
+      const timer = window.setTimeout(() => void mutate("sync-exam"),0);
+      return () => window.clearTimeout(timer);
+    }
+  }, [attempt,clockNow,busy,hasPending,readOnlyTab,mockConflict,mutate]);
+  async function advanceFullMock() {
+    if (!attempt?.fullMock || busy || mockCheckpointInFlight.current) return;
+    const choice = mockLocalRef.current?.choices[position] ?? attempt.items.find(item => item.position === position)?.selectedIndex;
+    setShowSkipConfirm(false);
+    await mutate("advance",position,choice ?? undefined);
+  }
   const current = attempt?.items.find(item => item.position === position);
   useEffect(() => { if (current?.feedback) feedbackRef.current?.focus(); }, [current?.feedback]);
-  const unitName = unitNames[attempt?.unitId ?? ""] ?? attempt?.unitId;
+  const currentPosition = current?.position;
+  useEffect(() => { if (currentPosition) document.getElementById("skct-current-question")?.focus({preventScroll:true}); }, [currentPosition]);
+  const unitName = attempt?.fullMock ? "전체 영역" : unitNames[attempt?.unitId ?? ""] ?? attempt?.unitId;
+  const exam = attempt?.fullMock;
+  const sectionName = exam ? SKCT_LEARNING_UNITS[exam.sectionIndex]?.name : unitName;
+  const deadline = exam?.phase === "break" ? exam.breakUntil : exam?.sectionDeadlineAt;
+  const remaining = deadline ? Math.max(0,Math.ceil((Date.parse(deadline)-clockNow)/1000)) : 0;
+  const timeLabel = `${Math.floor(remaining/60).toString().padStart(2,"0")}:${(remaining%60).toString().padStart(2,"0")}`;
   const draftKey = current && attempt ? `${attempt.id}:${current.position}` : "";
   const selectedIndex = attempt?.mode === "mock" && attempt.status === "in_progress"
     ? mockLocal?.choices[position] ?? current?.selectedIndex
@@ -596,7 +652,7 @@ export default function SkctPersonalPage({ session, view, initialAttemptId }: {
         units={home?.units.length ? home.units : [...SKCT_LEARNING_UNITS]} selectedUnitId={selectedUnitId}
         onSelectUnit={setSelectedUnitId} onStart={unitId => void start(unitId, view)}
         busy={busy} pending={hasPending} available={Boolean(home?.available)} loading={!home && !message} />}
-      {(view === "practice" || view === "mock") && attempt && <section className="skct-attempt" aria-labelledby="skct-attempt-title">
+      {(view === "practice" || view === "mock") && attempt && <section className={`skct-attempt skct-exam-workspace${exam ? " skct-full-mock" : ""}`} aria-labelledby="skct-attempt-title">
         {attempt.status === "in_progress" && readOnlyTab && <p role="status">이 학습은 다른 탭에서 열려 있습니다. 이 탭에서는 읽기만 할 수 있습니다. <button type="button" onClick={() => claimLease(attempt.id, true)}>이 탭에서 이어 풀기</button></p>}
         {attempt.mode === "mock" && attempt.status === "in_progress" && mockConflict && <div className="skct-save-message" role="alert">
           <p>다른 탭에서 저장한 기록과 이 탭의 답안이 다릅니다. 어느 답안을 계속 사용할지 선택해 주세요.</p>
@@ -637,18 +693,28 @@ export default function SkctPersonalPage({ session, view, initialAttemptId }: {
               setAttempt(null); setHasPending(false); setReadOnlyTab(false); setDraftChoices({});
               setShowSubmitConfirm(false); setShowFinishConfirm(false);
               sessionStorage.removeItem(attemptKey(attempt.mode));
-              if (initialAttemptId) window.history.replaceState(window.history.state, "", window.location.pathname);
+              window.history.replaceState(window.history.state, "", window.location.pathname);
             } finally { setBusy(false); }
-          }} disabled={busy}>영역 선택</button></div>
-        <nav className="skct-question-nav" aria-label="문항 이동">{attempt.items.map(item => <button key={item.position} type="button"
+          }} disabled={busy}className="secondary-button">{attempt.mode === "mock" ? "응시 설정" : "영역 선택"}</button></div>
+        {exam && <div className="skct-exam-status" aria-label="시험 진행 상태">
+          <ol>{SKCT_LEARNING_UNITS.map((unit,index) => <li key={unit.id} aria-current={exam.sectionIndex === index ? "step" : undefined}
+            className={exam.sectionIndex > index || exam.phase === "completed" ? "completed" : ""}><span>{index+1}</span>{unit.name}</li>)}</ol>
+          {attempt.status === "in_progress" && <div className="skct-exam-clock" role="timer" aria-label={exam.phase === "break" ? "휴식 남은 시간" : "영역 남은 시간"}>
+            <span>{exam.phase === "break" ? "다음 영역까지" : `${sectionName} 남은 시간`}</span><strong>{timeLabel}</strong></div>}
+        </div>}
+        {(attempt.status === "submitted" || attempt.mode === "mock" && !exam) && <nav className="skct-question-nav" aria-label="문항 이동">{attempt.items.map(item => <button key={item.position} type="button"
           aria-current={position === item.position ? "step" : undefined} aria-label={`${item.position}번 문항${item.finalized ? " 완료" : ""}`}
           disabled={busy || (attempt.mode === "practice" && hasPending) || (readOnlyTab && attempt.status === "in_progress") || mockConflict}
           onClick={() => { if (submissionLockRef.current) return; if (attempt.mode === "mock" && attempt.status === "in_progress") {
             setPosition(item.position); updateMockLocal({ type: "navigate", position: item.position });
           } else if (attempt.status === "submitted" || item.finalized) setPosition(item.position);
-          else void mutate("focus", item.position); }}>{item.position}{item.finalized ? " ✓" : ""}</button>)}</nav>
-        {current && <article className="skct-current" aria-labelledby="skct-current-question">
-          <p className="skct-question-count">{current.position} / {attempt.items.length} · 기록된 풀이 시간 {current.elapsedSeconds + (attempt.mode === "mock" ? mockLocal?.deltas[current.position] ?? 0 : 0)}초</p>
+          else void mutate("focus", item.position); }}>{item.position}{item.finalized ? " ✓" : ""}</button>)}</nav>}
+        {exam?.phase === "break" && attempt.status === "in_progress" && <section className="skct-exam-break" aria-label="영역 사이 휴식">
+          <span className="section-kicker">잠시 쉬어가세요</span><h3>다음은 {sectionName} 영역입니다.</h3>
+          <p>20문항 · 15분. 휴식이 끝나면 첫 문항이 자동으로 열립니다.</p><strong>{timeLabel}</strong></section>}
+        <div className="skct-exam-layout">
+        {current && (exam?.phase !== "break" || attempt.status === "submitted") && <article className="skct-current" aria-labelledby="skct-current-question">
+          <p className="skct-question-count">{exam ? `${current.question.unitId ? unitNames[current.question.unitId] : sectionName} · ${(current.position-1)%SKCT_MOCK_SECTION_QUESTIONS+1} / ${SKCT_MOCK_SECTION_QUESTIONS}` : `현재 ${current.position}번 · ${attempt.items.filter(item => item.finalized).length}문항 확인`} · 풀이 시간 {current.elapsedSeconds + (attempt.mode === "mock" ? mockLocal?.deltas[current.position] ?? 0 : 0)}초</p>
           <QuestionContent item={current} />
           <fieldset disabled={busy || (attempt.mode === "practice" && hasPending) || readOnlyTab || mockConflict || current.finalized || attempt.status === "submitted"}>
             <legend>답안 선택</legend>
@@ -658,12 +724,12 @@ export default function SkctPersonalPage({ session, view, initialAttemptId }: {
                 onChange={() => attempt.mode === "practice"
                   ? setDraftChoices(previous => ({ ...previous, [draftKey]: index+1 }))
                   : updateMockLocal({ type: "choose", position: current.position, choiceIndex: index+1 })} />
-              <span className="skct-choice-label" aria-hidden="true">{current.question.choiceHasSourceLabel[index] ? labels[index] : ""}</span><span className="skct-choice-text">{choice}</span>
+              <span className="skct-choice-label" aria-hidden="true">{labels[index]}</span><span className="skct-choice-text">{choiceTextWithoutNumber(choice,index)}</span>
             </label>)}
           </fieldset>
           {attempt.mode === "practice" && attempt.status === "in_progress" && !current.finalized &&
             <div className="skct-answer-action"><p>선택만으로는 채점되지 않습니다. 정답 확인을 누르면 답안이 확정됩니다.</p>
-              <button type="button" disabled={busy || hasPending || readOnlyTab || selectedIndex == null}
+              <button className="primary-button" type="button" disabled={busy || hasPending || readOnlyTab || selectedIndex == null}
                 onClick={() => void mutate("answer", current.position, selectedIndex ?? undefined)}>정답 확인</button></div>}
           {current.feedback && <section className="skct-feedback" aria-label="채점 결과" tabIndex={-1} ref={feedbackRef}>
             <h4>{current.feedback.correct ? "정답입니다" : `정답은 ${labels[current.feedback.answerIndex-1]} ${correctAnswerText}입니다`}</h4>
@@ -671,18 +737,31 @@ export default function SkctPersonalPage({ session, view, initialAttemptId }: {
             {Object.entries(current.feedback.distractorExplanations).length > 0 && <details><summary>다른 선택지 해설</summary>
               {Object.entries(current.feedback.distractorExplanations).map(([label,value]) => <p key={label}><strong>{label}</strong> {value}</p>)}</details>}
           </section>}
-          {current.finalized && current.position < attempt.items.length && <button type="button" disabled={busy || hasPending || readOnlyTab}
-            onClick={() => { const next = current.position+1; if (attempt.status === "submitted") setPosition(next); else void mutate("focus", next); }}>다음 문항</button>}
-          {attempt.mode === "practice" && attempt.status === "in_progress" && current.finalized
-            && attempt.items.every(item => item.finalized) && <button type="button" disabled={busy || hasPending || readOnlyTab}
-              onClick={() => void mutate("append")}>다음 문항 이어 풀기</button>}
+          <div className="skct-question-actions">
+            {attempt.mode === "practice" && position > 1 && <button className="secondary-button" type="button" disabled={busy || hasPending}
+              onClick={() => attempt.items.find(item=>item.position===position-1)?.finalized || attempt.status === "submitted" ? setPosition(position-1) : void mutate("focus",position-1)}>이전 문항</button>}
+            {(current.finalized || attempt.mode === "practice" && current.position < attempt.items.length) && (current.position < attempt.items.length || attempt.mode === "practice" && attempt.status === "in_progress") &&
+              <button className="primary-button" type="button" disabled={busy || hasPending || readOnlyTab}
+                onClick={() => { const next = current.position+1; if (next > attempt.items.length) void mutate("append");
+                  else if (attempt.status === "submitted" || attempt.items.find(item => item.position === next)?.finalized) setPosition(next);
+                  else void mutate("focus",next); }}>다음 문항</button>}
+            {exam && attempt.status === "in_progress" && <button className="primary-button" type="button" disabled={busy || hasPending || readOnlyTab || mockConflict || remaining === 0}
+              onClick={() => selectedIndex == null ? setShowSkipConfirm(true) : void advanceFullMock()}>
+              {position === 100 ? "시험 마치기" : position%20 === 0 ? "영역 마치기" : "다음 문항"}</button>}
+          </div>
         </article>}
+        {current && exam?.phase !== "break" && <SkctExamTools key={attempt.id} />}
+        </div>
         {attempt.mode === "practice" && attempt.status === "in_progress" && <button type="button"
-          className="skct-finish" disabled={busy || hasPending || readOnlyTab}
+          className="secondary-button skct-finish" disabled={busy || hasPending || readOnlyTab}
           onClick={() => setShowFinishConfirm(true)}>연습 마치기</button>}
-        {attempt.mode === "mock" && attempt.status === "in_progress" && <button className="skct-submit" type="button" disabled={busy || readOnlyTab || mockConflict}
+        {attempt.mode === "mock" && attempt.status === "in_progress" && <button className="secondary-button skct-submit" type="button" disabled={busy || readOnlyTab || mockConflict}
           onClick={() => setShowSubmitConfirm(true)}>모의고사 제출</button>}
       </section>}
+      {showSkipConfirm && <Modal title="미응답 문항 넘기기" onClose={() => setShowSkipConfirm(false)}>
+        <p>답안을 선택하지 않았습니다. 넘기면 이 문항으로 돌아갈 수 없습니다.</p><div className="modal-actions">
+          <button className="secondary-button" type="button" onClick={() => setShowSkipConfirm(false)}>계속 풀기</button>
+          <button className="primary-button" type="button" onClick={() => void advanceFullMock()}>미응답으로 넘기기</button></div></Modal>}
       {showSubmitConfirm && attempt?.mode === "mock" && attempt.status === "in_progress" && <Modal
         title="모의고사 제출 확인" onClose={() => { if (!busy) setShowSubmitConfirm(false); }}>
         <p>미응답 문항: {unansweredCount}개. 제출하면 답안을 바꿀 수 없고 정답과 해설이 공개됩니다.</p>
@@ -698,18 +777,18 @@ export default function SkctPersonalPage({ session, view, initialAttemptId }: {
             void mutate("finish");
           }}>연습 마치기 확정</button></div>
       </Modal>}
-      {view === "records" && <section className="skct-records" aria-labelledby="skct-records-title"><h2 id="skct-records-title">학습 기록</h2>
+      {view === "records" && <><SkctLearningStatistics statistics={statistics} /><section className="skct-records" aria-labelledby="skct-records-title"><h2 id="skct-records-title">학습 기록</h2>
         <button type="button" onClick={() => void refreshRecords()} disabled={busy}>기록 새로고침</button>
         {records?.length === 0 && <p>아직 저장된 기록이 없습니다.</p>}
         <ul>{records?.map(record => <li key={record.id}>
-          <span><strong>{unitNames[record.unit_id] ?? record.unit_id} · {record.mode === "practice" ? "문제 풀이" : "모의고사"}</strong>
+          <span><strong>{record.full_mock ? "전체 영역" : unitNames[record.unit_id] ?? record.unit_id} · {record.mode === "practice" ? "문제 풀이" : "모의고사"}</strong>
             <span className="skct-record-detail">시작 {dateTimeLabel(record.started_at)} · {record.answered_count}/{record.question_count} 풀이 · {record.elapsed_seconds}초
-              {record.status === "submitted" ? ` · ${record.correct_count}개 정답` : " · 진행 중"}</span></span>
+              {record.status === "submitted" ? ` · ${record.correct_count}/${record.mode === "mock" ? record.question_count : record.finalized_count ?? record.answered_count} 정답` : " · 진행 중"}</span></span>
           <a href={`/learn/skct-personal/${record.mode === "practice" ? "practice" : "mock-exams"}?attempt=${encodeURIComponent(record.id)}`}>
             {record.status === "submitted" ? "결과 보기" : "이어 풀기"}</a>
         </li>)}</ul>
         {recordsCursor && <button type="button" disabled={busy} onClick={() => void refreshRecords(recordsCursor)}>이전 기록 더 보기</button>}
-      </section>}
+      </section></>}
     </div>
     <nav className="mobile-nav skct-mobile-nav" aria-label="SKCT 개인학습 메뉴">
       {SKCT_SECTION_LINKS.map(item => <a key={item.view} className={`mobile-nav-item${view === item.view ? " active" : ""}`}

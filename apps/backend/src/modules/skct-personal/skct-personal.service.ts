@@ -8,6 +8,9 @@ import { appendPracticeBatch, commitCheckpoint, commitMutation, finishPractice, 
   listAdminItems, readAccount, readAdminOverview, readConcurrentStart, readHome, readMutation, readOwnedSnapshot, readRecords, readStart,
   type Row, type Snapshot } from "./skct-personal.repository";
 
+import { SKCT_MOCK_QUESTION_COUNT, SKCT_MOCK_UNITS } from "@shared/study/skct-personal-exam";
+import { initialFullMock, fullMockState, fullMockExpired, commitFullMockStep } from "./skct-personal-full-mock";
+
 const units = ["U01", "U02", "U03", "U04", "U05"] as const;
 const noStore = { "Cache-Control": "private, no-store", "X-Content-Type-Options": "nosniff" };
 function json(data: unknown, status = 200) { return Response.json(data, { status, headers: noStore }); }
@@ -34,6 +37,7 @@ function attemptPayload({ attempt, items, secretRows }: Snapshot) {
     status: attempt.status, revision: attempt.revision, activePosition: attempt.active_position,
     activeSince: attempt.active_since, lastOperationId: attempt.last_operation_id,
     startedAt: attempt.started_at, submittedAt: attempt.submitted_at, items: responseItems,
+    fullMock: fullMockState(attempt),
     correctCount: attempt.status === "submitted" ? responseItems.filter(item => item.feedback?.correct).length : null };
 }
 async function learnerIdentity(request: Request) {
@@ -98,12 +102,12 @@ export async function GET(request: Request): Promise<Response> {
           before = value as [string, string];
         } catch { return invalidAfterAuthorization(email,key,"기록 조회 위치를 확인해 주세요."); }
       }
-      const {accountRow,records}=await readRecords(key,before);
+      const {accountRow,records,statistics}=await readRecords(key,before);
       const authorization=deniedLearner(email,key,accountRow);
       if (!authorization.ok) return authorization.response;
       const page = records.slice(0,100);
       const last = page.at(-1);
-      return json({ records: page, nextCursor: records.length > 100 && last ? JSON.stringify([last.started_at,last.id]) : null });
+      return json({ records: page, statistics, nextCursor: records.length > 100 && last ? JSON.stringify([last.started_at,last.id]) : null });
     }
     if (view === "attempt") {
       const id = text(url.searchParams.get("id"));
@@ -121,28 +125,46 @@ export async function GET(request: Request): Promise<Response> {
 }
 
 async function start(request: Request,email: string,key: string, body: Row) {
-  if (!unit(body.unitId) || !["practice", "mock"].includes(String(body.mode)))
+  const fullMock = body.mode === "mock" && body.unitId === "ALL";
+  const fresh = body.fresh === true || fullMock;
+  if ((!unit(body.unitId) && !fullMock) || !["practice", "mock"].includes(String(body.mode)))
     return invalidAfterAuthorization(email,key,"단원과 학습 방식을 확인해 주세요.");
   const mode = body.mode as "practice" | "mock";
-  const count = mode === "practice" ? 5 : 10;
-  const {accountRow,siteRows,existing,release,selected}=await readStart(key,String(body.unitId),mode,count);
+  const requestId = fresh ? text(body.operationId) : null;
+  if (fresh && (!requestId || !/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu.test(requestId)))
+    return invalidAfterAuthorization(email,key,"시작 요청 식별자를 확인해 주세요.");
+  const singlePractice = mode === "practice" && body.practiceFlowVersion === 3;
+  const count = fullMock ? SKCT_MOCK_QUESTION_COUNT : mode === "practice" ? singlePractice ? 1 : 5 : 10;
+  const {accountRow,siteRows,existing,release,selected}=await readStart(key,fullMock ? "U01" : String(body.unitId),mode,count,fullMock);
   const authorization=deniedLearner(email,key,accountRow);
   if (!authorization.ok) return authorization.response;
   const maintenance=maintenanceResponse(request,siteRows);
   if (maintenance) return maintenance;
-  if (existing) {
+  if (requestId) {
+    const replay = await readOwnedSnapshot(requestId,key);
+    if (replay.snapshot.attempt) {
+      const previous = replay.snapshot.attempt;
+      if (previous.mode !== mode || previous.unit_id !== (fullMock ? "U01" : body.unitId)
+        || Boolean(previous.full_mock_json) !== fullMock) return fail("시작 요청 식별자가 다른 구성에 사용되었습니다.",409);
+      return json({ attempt: attemptPayload(replay.snapshot), resumed: false, replayed: true });
+    }
+  }
+  if (existing && !fresh) {
     const resumed=await readOwnedSnapshot(existing.id,key);
     return json({ attempt: attemptPayload(resumed.snapshot), resumed: true });
   }
   if (!release) return fail("문항 검증이 완료되기 전입니다.", 503);
   if (selected.length !== count || new Set(selected.map(row => row.source_item_id)).size !== count) return fail("문항 구성을 확인할 수 없습니다.", 503);
-  const id = crypto.randomUUID();
+  if (fullMock && SKCT_MOCK_UNITS.some(id => selected.filter(row => (row as unknown as Row).unit_id === id).length !== 20))
+    return fail("전체 영역의 문항 구성을 확인할 수 없습니다.",503);
+  const id = requestId ?? crypto.randomUUID();
   try {
-    const snapshot=await insertAttempt(id, key, release.id, String(body.unitId), mode, selected);
+    const snapshot=await insertAttempt(id, key, release.id, fullMock ? "U01" : String(body.unitId), mode, selected,
+      requestId ? { requestId, ...(fullMock ? { fullMockJson: JSON.stringify(initialFullMock()) } : {}) } : undefined);
     return json({ attempt: attemptPayload(snapshot), resumed: false }, 201);
   }
   catch {
-    const concurrent=await readConcurrentStart(key,String(body.unitId),mode);
+    const concurrent=requestId ? (await readOwnedSnapshot(requestId,key)).snapshot : await readConcurrentStart(key,String(body.unitId),mode);
     if (concurrent.attempt) return json({ attempt: attemptPayload(concurrent), resumed: true });
     return fail("학습을 시작하지 못했습니다.", 503);
   }
@@ -155,7 +177,8 @@ async function mutate(request: Request,email: string,key: string, body: Row) {
   const revision = integer(body.revision, 0, Number.MAX_SAFE_INTEGER);
   if (!action || !id || !operationId || revision === null)
     return invalidAfterAuthorization(email,key,"요청 식별자와 버전을 확인해 주세요.");
-  const {accountRow,siteRows,snapshot,appendSelection}=await readMutation(key,id,action === "append");
+  const appendCount = body.practiceFlowVersion === 3 ? 1 : 5;
+  const {accountRow,siteRows,snapshot,appendSelection}=await readMutation(key,id,action === "append",appendCount);
   const authorization=deniedLearner(email,key,accountRow);
   if (!authorization.ok) return authorization.response;
   const maintenance=maintenanceResponse(request,siteRows);
@@ -165,19 +188,31 @@ async function mutate(request: Request,email: string,key: string, body: Row) {
   const position = integer(body.position, 1, Number.MAX_SAFE_INTEGER);
   const choice = integer(body.choiceIndex, 1, 5);
   const opDigest = digest({ action, position, choice,
-    ...(action === "answer" && body.practiceFlowVersion === 2 ? { practiceFlowVersion: 2 } : {}),
+    ...(action === "answer" && [2,3].includes(Number(body.practiceFlowVersion)) ? { practiceFlowVersion: body.practiceFlowVersion } : {}),
     ...(action === "checkpoint" ? { activePosition: body.activePosition, answers: body.answers, times: body.times } : {}) });
   if (attempt.last_operation_id === operationId) {
     if (attempt.last_operation_digest !== opDigest) return fail("요청 식별자가 다른 답안에 사용되었습니다.", 409);
     return json({ attempt: attemptPayload(snapshot), replayed: true });
   }
   if (attempt.status !== "in_progress" || attempt.revision !== revision) return fail("다른 화면에서 학습 상태가 바뀌었습니다. 새로고침해 주세요.", 409);
+  const fullMock = fullMockState(attempt);
+  if (fullMock) {
+    if (["advance","sync-exam","submit"].includes(action) || action === "checkpoint" && fullMockExpired(fullMock,Date.now())) {
+      if (action === "advance" && position !== attempt.active_position) return fail("현재 문항만 넘길 수 있습니다.",409);
+      const result = await commitFullMockStep(attempt,{ action: action === "checkpoint" ? "sync-exam" : action as "advance" | "sync-exam" | "submit",
+        choice, operationId, operationDigest: opDigest });
+      if (!result.committed) return fail("다른 화면에서 시험 상태가 바뀌었습니다.",409);
+      return json({ attempt: attemptPayload(result.snapshot) });
+    }
+    if (action !== "checkpoint") return fail("실전형 모의고사는 현재 문항에서 순서대로 진행합니다.",409);
+    if (fullMock.phase !== "answering") return fail("다음 영역이 시작되면 답안을 저장할 수 있습니다.",409);
+  }
   if (action === "append" && attempt.mode === "practice") {
     const { items } = snapshot;
     if (!items.length || items.some(item => !item.finalized_at)) return fail("현재 연습 문항을 먼저 확인해 주세요.");
     const lastPosition = items.at(-1)!.position;
     const selected = appendSelection;
-    if (selected.length !== 5 || new Set(selected.map(row => row.source_item_id)).size !== 5)
+    if (selected.length !== appendCount || new Set(selected.map(row => row.source_item_id)).size !== appendCount)
       return fail("다음 연습 문항을 준비하지 못했습니다.", 503);
     const result = await appendPracticeBatch(attempt,lastPosition,selected,operationId,opDigest);
     if (!result.committed) return fail("다른 화면에서 학습 상태가 바뀌었습니다. 새로고침해 주세요.", 409);
@@ -189,22 +224,24 @@ async function mutate(request: Request,email: string,key: string, body: Row) {
     return json({ attempt: attemptPayload(result.snapshot) });
   }
   if (action === "checkpoint" && attempt.mode === "mock") {
-    if (!Array.isArray(body.answers) || !Array.isArray(body.times) || body.answers.length > 10 || body.times.length > 10)
+    if (!Array.isArray(body.answers) || !Array.isArray(body.times) || body.answers.length > snapshot.items.length || body.times.length > snapshot.items.length)
       return fail("저장할 답안 형식을 확인해 주세요.");
     const { items } = snapshot;
     const validPositions = new Set(items.map(item => item.position));
-    const activePosition = body.activePosition === null ? null : integer(body.activePosition,1,10);
+    const activePosition = fullMock && body.activePosition === null ? attempt.active_position : body.activePosition === null ? null : integer(body.activePosition,1,items.length);
     if (activePosition === null && body.activePosition !== null || activePosition !== null && !validPositions.has(activePosition))
       return fail("문항 위치를 확인해 주세요.");
     const answers = body.answers.map(value => value && typeof value === "object" && !Array.isArray(value)
-      ? { position: integer((value as Row).position,1,10), choiceIndex: integer((value as Row).choiceIndex,1,5) } : null);
+      ? { position: integer((value as Row).position,1,items.length), choiceIndex: integer((value as Row).choiceIndex,1,5) } : null);
     const times = body.times.map(value => value && typeof value === "object" && !Array.isArray(value)
-      ? { position: integer((value as Row).position,1,10), seconds: integer((value as Row).seconds,0,30) } : null);
+      ? { position: integer((value as Row).position,1,items.length), seconds: integer((value as Row).seconds,0,30) } : null);
     if (answers.some(row => !row || row.position === null || row.choiceIndex === null || !validPositions.has(row.position))
       || times.some(row => !row || row.position === null || row.seconds === null || !validPositions.has(row.position))
       || new Set(answers.map(row => row?.position)).size !== answers.length
       || new Set(times.map(row => row?.position)).size !== times.length
       || times.reduce((sum,row) => sum + Number(row?.seconds ?? 0),0) > 30) return fail("저장할 답안과 시간을 확인해 주세요.");
+    if (fullMock && (activePosition !== attempt.active_position || answers.some(row => row?.position !== attempt.active_position)
+      || times.some(row => row?.position !== attempt.active_position))) return fail("넘긴 문항의 답안은 바꿀 수 없습니다.",409);
     const result = await commitCheckpoint(attempt, { activePosition,
       answers: answers as Array<{ position: number; choiceIndex: number }>,
       times: times as Array<{ position: number; seconds: number }>, operationId, operationDigest: opDigest });
@@ -218,7 +255,7 @@ async function mutate(request: Request,email: string,key: string, body: Row) {
   if (!validAction) return fail("요청한 학습 동작을 확인해 주세요.");
   const result = await commitMutation({ action: action as "focus" | "pause" | "answer" | "save" | "submit",
     key, id, revision, position, choice, operationId, operationDigest: opDigest, mode: attempt.mode,
-    continuousPractice: body.practiceFlowVersion === 2 });
+    continuousPractice: [2,3].includes(Number(body.practiceFlowVersion)) });
   if (!result.committed) return fail("다른 화면에서 학습 상태가 바뀌었습니다. 새로고침해 주세요.", 409);
   return json({ attempt: attemptPayload(result.snapshot) });
 }

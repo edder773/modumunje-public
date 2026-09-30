@@ -225,6 +225,12 @@ const worker = {
     const headers = new Headers(request.headers);
     headers.set("X-Request-ID", crypto.randomUUID().replaceAll("-", ""));
     request = new Request(request, { headers });
+    if (new URL(request.url).pathname === "/api/group-exams/realtime") {
+      const rateLimited = await enforceRequestRateLimit(request,env,"/api/group-exams");
+      if (rateLimited) return rateLimited;
+      const { handleGroupExamWebSocket } = await import("@backend/modules/group-exams/group-exam-websocket");
+      return handleGroupExamWebSocket(request);
+    }
     return withD1Metrics(async () => {
       const url = new URL(request.url);
       const rateLimited = await metricPhase("rate_limit", () => enforceRequestRateLimit(request, env, url.pathname));

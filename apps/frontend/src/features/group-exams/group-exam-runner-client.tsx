@@ -5,6 +5,8 @@ import {useRouter} from "next/navigation";
 import {QuestionRenderer} from "./group-exam-question-renderer";
 import {groupExamApi as api,GroupApiError} from "./group-exam-api";
 import {claimQueue,deleteDraft,deleteQueue,deleteQueueIfMatch,getQueue,loadDraft,payloadDigest,putQueue,releaseQueue,saveDraft,type QueuedGroupExamMutation} from "./group-exam-queue";
+import { connectGroupSocket, type GroupSocketStatus } from "./group-exam-socket";
+import SkctExamTools from "@frontend/features/study/components/skct-personal/skct-exam-tools";
 import styles from "./group-exam.module.css";
 
 type Json=Record<string,unknown>;
@@ -37,6 +39,8 @@ export function GroupExamRunnerClient({runId}:{runId:string}){
   const [timerAnnouncement,setTimerAnnouncement]=useState("");
   const [offset,setOffset]=useState(0);
   const [pending,setPending]=useState<QueuedGroupExamMutation|null>(null);
+  const [socketStatus,setSocketStatus]=useState<GroupSocketStatus>("connecting");
+  const pendingRef=useRef(false);pendingRef.current=Boolean(pending)||status==="syncing";
   const online=useSyncExternalStore(subscribeOnline,readOnline,readServerOnline);
   const heading=useRef<HTMLHeadingElement>(null);
   const channel=useRef<BroadcastChannel|null>(null);
@@ -45,7 +49,7 @@ export function GroupExamRunnerClient({runId}:{runId:string}){
     setCurrent(body);setOffset(Date.parse(body.serverNow)-Date.now());
     if(body.phase==="countdown"){setDisplay(null);setStatus("countdown");setMessage("모든 참가자가 같은 시각에 시작합니다.");return;}
     if(["submitted","auto_submitted","no_show"].includes(body.participantStatus)||body.run.status==="completed"){setDisplay(null);setStatus("complete");setMessage("응시가 끝났습니다. 그룹 시험이 모두 끝나면 대기실에서 결과를 확인할 수 있습니다.");return;}
-    setDisplay(body.question);setStatus("ready");setMessage("답안을 선택하세요. 선택만으로는 서버 요청을 보내지 않습니다.");
+    setDisplay(body.question);setStatus("ready");setMessage("답안을 선택한 뒤 다음 문항으로 이동하세요.");
     const position=Number(body.question?.position??-1);
     const draft=position>=0?await loadDraft(runId,position).catch(()=>null):null;
     setAnswers(draft??(body.question?.answer_json as number[]|undefined)??[]);
@@ -125,6 +129,10 @@ export function GroupExamRunnerClient({runId}:{runId:string}){
     tick();const timer=window.setInterval(tick,200);return()=>{window.clearInterval(timer);window.clearTimeout(retryTimer);};
   },[current?.countdownEndsAt,load,offset,status]);
 
+  useEffect(()=>connectGroupSocket({runId,onStatus:setSocketStatus,onInvalidate:()=>{
+    if(!pendingRef.current)void load().catch(()=>undefined);
+  }}),[load,runId]);
+
   const deadlineAt=String(current?.progress?.deadlineAt??display?.deadline_at_utc??"");
   useEffect(()=>{
     if(!display||status!=="ready"||!deadlineAt)return;
@@ -176,9 +184,31 @@ export function GroupExamRunnerClient({runId}:{runId:string}){
   const choices=(display?.choices_snapshot_json as unknown[]|undefined)??[];
   const isV2=Number(current?.run.contractVersion)===2;
   return <main className={styles.examOnly}>
-    <header className={styles.examOnlyHeader}><button className={styles.secondary} onClick={()=>router.push("/groups")}>시험 나가기</button><p role="status" aria-live="polite">{message}</p></header>
+    <header className={styles.examOnlyHeader}>
+      <div><p className={styles.eyebrow}>그룹 SKCT 모의시험</p><strong>{String(current?.run.groupName??"동시 모의시험")}</strong></div>
+      <div className={styles.examConnection}><span>{socketStatus === "connected" ? "● 실시간 연결" : online ? "연결 복구 중" : "오프라인"}</span><button className={styles.secondary} onClick={()=>router.push("/groups")}>대기실</button></div>
+    </header><p className={styles.runnerStatus} role="status" aria-live="polite">{message}</p>
     {status==="countdown"&&<section className={styles.countdown} aria-labelledby="countdown-title"><h1 id="countdown-title">시험 시작</h1><strong aria-live="assertive">{countdownRemaining||"시작"}</strong><p>서버 시각에 맞춰 자동으로 열립니다.</p></section>}
-    {display&&<section className={styles.runnerQuestion} aria-labelledby="runner-question-title"><div className={styles.runnerMeta}><span>{String(display.area_code_snapshot)}</span><span>{Number(display.position)+1}/{String(current?.run.questionCount)}</span><span>{status==="syncing"?"동기화 중":`남은 시간 ${questionRemaining}초`}</span></div><p className="sr-only" role="status" aria-live="polite">{timerAnnouncement}</p><h1 ref={heading} tabIndex={-1} id="runner-question-title">{Number(display.position)+1}번</h1><QuestionRenderer question={display}/><fieldset><legend>답안 선택</legend>{choices.map((choice,index)=><label key={index} className={styles.choice}><input type="radio" name={`answer-${String(display.position)}`} checked={answers[0]===index} onChange={()=>{setAnswers([index]);void saveDraft(runId,Number(display.position),[index]);}}/><span>{String(choice)}</span></label>)}</fieldset><div className={styles.runnerActions}>{isV2?<button disabled={!online||Boolean(pending)||status==="syncing"||answers.length===0} onClick={()=>void advance(Number(display.position)+1===Number(current?.run.questionCount))}>{Number(display.position)+1===Number(current?.run.questionCount)?"답안 제출":"다음 문항"}</button>:<><button disabled={!online||Boolean(pending)||status==="syncing"||answers.length===0} onClick={()=>void advance(false)}>답안 저장</button><button className={styles.secondary} disabled={!online||Boolean(pending)||status==="syncing"} onClick={()=>void advance(true)}>응시 완료</button></>}{status==="retry"&&pending&&<button className={styles.secondary} onClick={()=>void retryPending()}>같은 작업 키로 다시 시도</button>}{status==="retry"&&pending&&<button className={styles.secondary} onClick={()=>void discardPending()}>보관 작업 취소 후 서버 상태 확인</button>}{status==="retry"&&!pending&&<button className={styles.secondary} onClick={()=>void load()}>서버 상태로 다시 맞추기</button>}</div></section>}
+    {display&&<>
+      <section className={styles.examToolbar} aria-label="시험 진행 상황">
+        <div><span className={styles.eyebrow}>{String(display.area_code_snapshot)}</span><strong>{Number(display.position)+1}<small> / {String(current?.run.questionCount)}문항</small></strong></div>
+        <div className={styles.examProgress}><progress max={Number(current?.run.questionCount??1)} value={Number(display.position)} aria-label="완료한 문항"/><span>이전 문항으로 돌아갈 수 없습니다.</span></div>
+        <div className={`${styles.examTimer} ${questionRemaining <= 10 ? styles.timerUrgent : ""}`}><span>현재 문항 남은 시간</span><strong>{status === "syncing" ? "확인 중" : `${Math.floor(questionRemaining/60).toString().padStart(2,"0")}:${(questionRemaining%60).toString().padStart(2,"0")}`}</strong></div>
+      </section>
+      <div className={styles.examWorkspace}>
+        <section className={styles.runnerQuestion} aria-labelledby="runner-question-title">
+          <p className="sr-only" role="status" aria-live="polite">{timerAnnouncement}</p>
+          <h1 ref={heading} tabIndex={-1} id="runner-question-title">{Number(display.position)+1}번 문항</h1>
+          <QuestionRenderer question={display}/>
+          <fieldset><legend>답안 선택</legend>{choices.map((choice,index)=><label key={index} className={styles.choice}>
+            <input type="radio" name={`answer-${String(display.position)}`} checked={answers[0]===index} onChange={()=>{setAnswers([index]);void saveDraft(runId,Number(display.position),[index]);}}/>
+            <span className={styles.choiceNumber} aria-hidden="true">{["①","②","③","④","⑤"][index]??index+1}</span><span>{String(choice).replace(/^[①②③④⑤]\s*/u,"")}</span>
+          </label>)}</fieldset>
+          <div className={styles.runnerActions}>{isV2?<button disabled={!online||Boolean(pending)||status==="syncing"||answers.length===0} onClick={()=>void advance(Number(display.position)+1===Number(current?.run.questionCount))}>{Number(display.position)+1===Number(current?.run.questionCount)?"답안 제출":"다음 문항 →"}</button>:<><button disabled={!online||Boolean(pending)||status==="syncing"||answers.length===0} onClick={()=>void advance(false)}>답안 저장</button><button className={styles.secondary} disabled={!online||Boolean(pending)||status==="syncing"} onClick={()=>void advance(true)}>응시 완료</button></>}{status==="retry"&&pending&&<button className={styles.secondary} onClick={()=>void retryPending()}>같은 작업 키로 다시 시도</button>}{status==="retry"&&pending&&<button className={styles.secondary} onClick={()=>void discardPending()}>보관 작업 취소 후 서버 상태 확인</button>}{status==="retry"&&!pending&&<button className={styles.secondary} onClick={()=>void load()}>서버 상태로 다시 맞추기</button>}</div>
+        </section>
+        <SkctExamTools key={runId}/>
+      </div>
+    </>}
     {!display&&status!=="countdown"&&<section className={styles.countdown}><h1>{status==="complete"?"응시 완료":"시험 상태 확인"}</h1><p>{message}</p>{status==="retry"&&!pending&&<button onClick={()=>void load().catch(()=>markReadbackUnavailable())}>서버 상태 다시 확인</button>}{status==="complete"&&<button onClick={()=>router.push("/groups")}>그룹 대기실로 돌아가기</button>}</section>}
   </main>;
 }

@@ -10,7 +10,6 @@ import {
 import {
   buildQuestionTimeline,
   approvedSkctNew300Release,
-  APPROVED_SKCT_NEW300_GROUP_RELEASE,
   competitionRanks,
   GroupExamError,
   groupName,
@@ -301,8 +300,8 @@ async function createRun(request: Request, body: JsonObject, userKey: string) {
       finalDeadlineAt: timeline?.finalDeadlineAt ?? null,
       startGuard: { sql: `EXISTS(SELECT 1 FROM skct_content_releases
         WHERE id=? AND status='active' AND schema_version=? AND release_sha256=?)`,
-        values: [APPROVED_SKCT_NEW300_GROUP_RELEASE.id, APPROVED_SKCT_NEW300_GROUP_RELEASE.schema,
-          APPROVED_SKCT_NEW300_GROUP_RELEASE.sha256] },
+        values: [releaseValue(activeRelease,"id"), releaseValue(activeRelease,"schema_version"),
+          releaseValue(activeRelease,"release_sha256")] },
     });
   } catch {
     const concurrent = await repository.findRunByRequestId(requestId);
@@ -326,7 +325,7 @@ async function getHandler(request: Request) {
   const scope = url.searchParams.get("scope") ?? "groups";
   try {
     if (scope === "groups") {
-      return response({ ...await repository.listGroupsWithOwnedCount(authorization.userKey), capabilities: { personalProgress: v2Enabled(), strictRepeat: strictRepeatEnabled() } });
+      return response({ ...await repository.listGroupsWithOwnedCount(authorization.userKey), capabilities: { personalProgress: v2Enabled(), strictRepeat: strictRepeatEnabled(), webSocket: true } });
     }
     if (scope === "lobby") {
       const now = new Date();
@@ -345,7 +344,7 @@ async function getHandler(request: Request) {
         presence: snapshot.presence,
       } : null;
       return response({ groups: snapshot.groups, ownedActiveCount: snapshot.ownedActiveCount,
-        capabilities: { personalProgress: v2Enabled(), strictRepeat: strictRepeatEnabled() }, selectedGroupId,
+        capabilities: { personalProgress: v2Enabled(), strictRepeat: strictRepeatEnabled(), webSocket: true }, selectedGroupId,
         detail: snapshot.group ? { group: lobbyDetail(snapshot.group, snapshot.slots, snapshot.scheduled, now), members: snapshot.members } : null,
         sync });
     }

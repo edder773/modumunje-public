@@ -1,4 +1,4 @@
-export const EXPECTED_SCHEMA_VERSION = "0563";
+export const EXPECTED_SCHEMA_VERSION = "0564";
 export const SCHEMA_BASELINE_VERSION = "0554";
 
 // Stage 9 freezes the mixed schema/content era. Migrations after this cutoff

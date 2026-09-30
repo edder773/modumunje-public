@@ -12,7 +12,7 @@ const headers = { origin, "content-type": "application/json", "x-baeumzip-authen
   "x-sql-study-user-request": "1" };
 
 async function activateApprovedBank(db: ReturnType<typeof openCanonicalTestDatabase>) {
-  assert.equal(db.prepare("SELECT migration_version FROM app_schema_state WHERE id=1").get()?.migration_version, "0563");
+  assert.equal(db.prepare("SELECT migration_version FROM app_schema_state WHERE id=1").get()?.migration_version, "0564");
   const bankPath = process.env.SKCT_GROUP_ACTIVATION_BANK?.trim();
   assert.ok(bankPath && existsSync(bankPath), "SKCT_GROUP_ACTIVATION_BANK must name the private approved new300 fixture");
   const bank = JSON.parse(readFileSync(bankPath, "utf8")) as Record<string, unknown>;

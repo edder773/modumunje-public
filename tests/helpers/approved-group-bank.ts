@@ -17,7 +17,7 @@ export function readApprovedGroupBank() {
 
 export async function activateApprovedGroupBank(database: ReturnType<typeof openCanonicalTestDatabase>) {
   assert.equal(database.prepare("SELECT migration_version FROM app_schema_state WHERE id=1").get()?.migration_version,
-    "0563", "this shared fixture is for the canonical 0563 schema and admin-9 full backup");
+    "0564", "this shared fixture uses the current canonical schema and admin-9 full backup");
   const bank = readApprovedGroupBank();
   const preview = await previewSkctBankActivation(bank);
   assert.equal(preview.eligibleCount, 300);

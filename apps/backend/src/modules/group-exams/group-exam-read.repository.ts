@@ -1,3 +1,4 @@
+import { personalGroupRelease, personalGroupQuestions, PERSONAL_GROUP_PREFIX } from "./group-exam-personal-bank";
 import { DatabaseRepository } from "@backend/infrastructure/database/database.repository";
 
 export type GroupRow = {
@@ -223,6 +224,8 @@ export class GroupExamReadRepository extends DatabaseRepository {
   }
 
   async activeRelease() {
+    const personal = await personalGroupRelease(this.connection());
+    if (personal) return personal;
     return this.connection().prepare(`
       SELECT * FROM skct_content_releases
       WHERE status = 'active'
@@ -231,6 +234,7 @@ export class GroupExamReadRepository extends DatabaseRepository {
   }
 
   async eligibleQuestions(releaseId: string) {
+    if (releaseId.startsWith(PERSONAL_GROUP_PREFIX)) return personalGroupQuestions(this.connection(),releaseId);
     return results(await this.connection().prepare(`
       SELECT p.*, s.correct_answers_json, s.explanation_md, s.secret_hash
       FROM skct_question_public p

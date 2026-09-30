@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore
 import { useRouter } from "next/navigation";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
+import { connectGroupSocket, type GroupSocketStatus } from "./group-exam-socket";
 import styles from "./group-exam.module.css";
 import { groupExamApi as api, GroupApiError } from "./group-exam-api";
 import { GroupExamModal } from "./group-exam-modal";
@@ -61,7 +62,8 @@ export function GroupExamClient() {
   const pendingActionRef = useRef(new Set<string>());
   const [pageState, setPageState] = useState<"loading" | "ready" | "error">("loading");
   const [ownedActiveCount, setOwnedActiveCount] = useState(0);
-  const [capabilities, setCapabilities] = useState({ personalProgress: false, strictRepeat: false });
+  const [capabilities, setCapabilities] = useState({ personalProgress: false, strictRepeat: false, webSocket: false });
+  const [socketStatus,setSocketStatus] = useState<GroupSocketStatus>("connecting");
   const [resultLoading, setResultLoading] = useState(false);
   const retryKeys = useRef(new Map<string, string>());
   const settingsPendingAttemptsRef = useRef(new Map<string, SettingsPendingAttempt>());
@@ -255,7 +257,21 @@ export function GroupExamClient() {
   }, []);
 
   useEffect(() => {
+    if(!selectedId||!capabilities.webSocket)return;
+    let timer=0;
+    const stop=connectGroupSocket({groupId:selectedId,onStatus:setSocketStatus,onInvalidate:()=>{
+      window.clearTimeout(timer);timer=window.setTimeout(()=>void refreshSync(false),100);
+    }});
+    return()=>{window.clearTimeout(timer);stop();};
+  },[capabilities.webSocket,refreshSync,selectedId]);
+
+  useEffect(() => {
     if (!selectedId) return;
+    if(capabilities.webSocket&&socketStatus==="connected"){
+      const heartbeat=()=>void refreshSync(true,true);
+      heartbeat();const timer=window.setInterval(heartbeat,20_000);
+      return()=>window.clearInterval(timer);
+    }
     let stopped = false;
     let timer = 0;
     let inFlight = false;
@@ -303,7 +319,7 @@ export function GroupExamClient() {
       window.removeEventListener("online", expedite);
       document.removeEventListener("visibilitychange", expedite);
     };
-  }, [refreshSync, selectedId, syncRefreshNonce]);
+  }, [capabilities.webSocket, socketStatus, refreshSync, selectedId, syncRefreshNonce]);
 
   async function openResult() {
     const runId = String(selected?.recent_run_id ?? "");
@@ -324,10 +340,11 @@ export function GroupExamClient() {
   return (
     <main className={styles.page}>
       <header className={styles.hero}>
-        <p>로그인 회원 전용</p><h1>그룹 SKCT 동시 모의시험</h1>
-        <p>혼자 연습하거나 그룹원과 같은 문제를 서버 시각에 맞춰 응시합니다. 제한시간이 지나면 다음 문제로 자동 이동합니다.</p>
-        <p role="status" className={deviceOnline ? styles.siteOnline : styles.siteOffline}>기기 네트워크 {deviceOnline ? "연결됨" : "끊김"} · 서버 상태 {presenceHealth.status === "fresh" ? "확인됨" : presenceHealth.status === "degraded" ? "확인 불가" : "확인 중"}</p>
-        <p>접속 중은 서버가 확인한 최근 60초 내 보이는 화면, 최근 접속은 최근 5분 내 신호 기준입니다.{presenceHealth.status === "degraded" && presenceHealth.lastSuccessAt ? ` 마지막 확인 ${new Date(presenceHealth.lastSuccessAt).toLocaleTimeString("ko-KR")}` : ""}</p>
+        <div><p className={styles.eyebrow}>함께 푸는 SKCT</p><h1>그룹 모의시험</h1>
+        <p>같은 문제, 같은 시작 시각. 개인학습 문제은행의 다섯 영역을 함께 풀어 보세요.</p></div>
+        <span role="status" className={deviceOnline ? styles.siteOnline : styles.siteOffline}>
+          {deviceOnline ? capabilities.webSocket && socketStatus === "connected" ? "● 실시간 연결" : "연결 확인 중" : "오프라인 · 재연결 대기"}
+        </span>
       </header>
       {notice && <p className={styles.notice} role="status" aria-live="polite">{notice}</p>}
       <section className={styles.workspace}>
@@ -338,12 +355,12 @@ export function GroupExamClient() {
           <label>그룹 선택<select value={selectedId} onChange={(event) => selectGroup(event.target.value)}>
             <option value="">그룹을 선택하세요</option>{groups.map((group) => <option key={String(group.id)} value={String(group.id)}>{String(group.name)}</option>)}
           </select></label>
-          <form action={createGroup} className={styles.stack}>
-            <h3>새 그룹 만들기</h3>
+          <details className={styles.createGroup} open={groups.length === 0}><summary>새 그룹 만들기</summary><form action={createGroup} className={styles.stack}>
             <label>그룹 이름<input name="name" minLength={2} maxLength={80} required /></label>
             <label>표시 이름<input name="publicName" minLength={2} maxLength={40} required /></label>
             <button disabled={pendingActions.has("group-create") || ownedActiveCount >= 3}>그룹 만들기</button>
-          </form>
+          </form></details>
+          <div className={styles.bankNote}><strong>개인학습 문제은행</strong><p>언어이해 · 자료해석 · 창의수리 · 언어추리 · 수열추리</p><p>시험이 시작되면 참가자와 문항 구성이 고정됩니다.</p></div>
         </aside>
 
         <section className={styles.mainStage}>
@@ -352,6 +369,7 @@ export function GroupExamClient() {
           <p>현재 {String(detail.active_members)}명 · 초대 예약 {String(detail.reserved_invites)}명 · 정원 {String(detail.member_limit)}명</p></div>
           <span className={`${styles.phase} ${phase === "running" ? styles.phaseLive : ""}`}>{phase === "running" ? "시험 진행 중" : phase === "scheduled" ? "예약 대기" : phase === "finalizing" ? "채점 중" : phase === "completed" ? "최근 시험 완료" : "대기실"}</span></div>
           <LobbySummary detail={detail} />
+          <h3 className={styles.memberHeading}>참가자 <span>{members.length}명</span></h3>
           <ul className={styles.members}>{members.map((member) => {
             const memberPresence = presenceByMembership.get(String(member.membership_id)) ?? "offline";
             const presenceClass = presenceHealth.status !== "fresh" ? styles.unknown
@@ -372,8 +390,8 @@ export function GroupExamClient() {
         </article>}
 
         {selectedId && <article className={`${styles.card} ${styles.examStage}`}>
-          <h2>시험 진행</h2>
-          <p>서버가 시험 상태를 자동으로 동기화합니다. 시작된 시험의 고정 참가자는 이 화면에서 바로 시험으로 전환됩니다.</p>
+          <p className={styles.eyebrow}>내 응시</p><h2>{phase === "running" ? "시험이 시작되었습니다" : "준비되면 함께 시작하세요"}</h2>
+          <p>{phase === "running" ? "시험 화면에서 답안을 선택하고 다음 문항으로 이동하세요." : "대표가 시험을 시작하면 모든 참가자가 같은 시각에 응시합니다."}</p>
           <button className={styles.secondary} onClick={() => void refreshSync(false)}>상태 지금 확인</button>
           {["running","finalizing"].includes(String(selected?.recent_run_status ?? phase)) && Boolean(selected?.recent_run_id) && <button onClick={()=>router.push(`/groups/exams/${encodeURIComponent(String(selected?.recent_run_id))}`)}>시험 전용 화면 열기</button>}
           {selected?.recent_run_status === "completed" && <button className={styles.secondary} onClick={openResult}>최근 결과 보기</button>}
@@ -393,7 +411,7 @@ function LobbySummary({ detail }: {detail: AnyRecord}) {
   return <div className={styles.lobby}>
     <p><strong>문항 수:</strong> {String(lobby.effectiveQuestionCount ?? 15)}문항{lobby.questionCountAdminSet ? " (관리자 설정)" : " (기본)"}</p>
     <p><strong>오늘 남은 횟수:</strong> {String(lobby.quotaRemaining ?? 1)}/{String(lobby.quotaTotal ?? 1)} · 다음 초기화 {lobby.nextQuotaResetAt ? new Date(String(lobby.nextQuotaResetAt)).toLocaleString("ko-KR", { timeZone: "Asia/Seoul" }) : "-"}</p>
-    <p><strong>자동 다음:</strong> 항상 켜짐</p>
+    <p><strong>진행 방식:</strong> 한 문항씩 · 시간 종료 시 자동 이동</p>
     <details><summary>영역별 문항 제한시간</summary><ul>{GROUP_EXAM_AREAS.map((area) => <li key={area}>{area} {String(seconds[area] ?? 45)}초</li>)}</ul></details>
   </div>;
 }

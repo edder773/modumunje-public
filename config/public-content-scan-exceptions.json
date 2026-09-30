@@ -4,16 +4,16 @@
     "reason": "Server-side group session control and localized errors; question and answer values are fetched at runtime, not embedded."
   },
   "apps/backend/src/modules/group-exams/group-exam.service.ts": {
-    "sha256": "47b3d5797b8aef52c7f1d38b33880a2da212f6af7d1ed20a3527fa3db0f8229e",
-    "reason": "Server-side group session control and localized errors; question and answer values are fetched at runtime, not embedded."
+    "sha256": "8da231f3e808e7181b24c9131cc1238dc658e6221e7565048f256324af1e4dd6",
+    "reason": "Runtime study or group exam control and Korean UI labels. Content and answers are read from the authenticated database; no private question bank is embedded."
   },
   "apps/backend/src/modules/skct-personal/skct-personal-release-admin.ts": {
     "sha256": "b057a83d6bb4e0a9d0e49cdf2d08f1499ed5b5934276ccf53d3423c5bca2c6e4",
     "reason": "Server-side SKCT release validation or session handling with localized errors; no embedded private item or answer bank."
   },
   "apps/backend/src/modules/skct-personal/skct-personal.service.ts": {
-    "sha256": "5e9e1e627675d38801cc4fc8c446c46e4e289b9265f45f05537017413ba52ea4",
-    "reason": "Server-side SKCT release validation or session handling with localized errors; no embedded private item or answer bank."
+    "sha256": "3c9b32a70d7a67f5653654cb28b89328778b004dc2c09be1cfc7c1d132d2cf81",
+    "reason": "Runtime study or group exam control and Korean UI labels. Content and answers are read from the authenticated database; no private question bank is embedded."
   },
   "apps/backend/src/modules/study/study-attempt.service.ts": {
     "sha256": "8234cddcef31b279912d554ce48675768ea8e7b78654157a2220a757786f619f",
@@ -40,8 +40,8 @@
     "reason": "Administrator form labels and dynamic database-backed content rendering; no fixed question, choice or answer rows."
   },
   "apps/frontend/src/features/group-exams/group-exam-client.tsx": {
-    "sha256": "fddb334ad98679d69d2243fcf57f5585454af6fe9463d4fc13d61ce56aba1539",
-    "reason": "Learner interface labels and dynamic API-backed question rendering; no embedded released prompt or answer key."
+    "sha256": "1bcd0d10db1d4b8fc26ca01afb67da445eaa54ac8aaa41e91336b688e68bc0c0",
+    "reason": "Runtime study or group exam control and Korean UI labels. Content and answers are read from the authenticated database; no private question bank is embedded."
   },
   "apps/frontend/src/features/study/components/local-practice/workbook.tsx": {
     "sha256": "9aa3e092b5750f2874b3555e97df925cb165de1d05e7a8cf54782de0cf03c99f",
@@ -52,8 +52,8 @@
     "reason": "Learner interface labels and dynamic API-backed question rendering; no embedded released prompt or answer key."
   },
   "apps/frontend/src/features/study/components/skct-personal/skct-personal-page.tsx": {
-    "sha256": "0e36a28a3669bbf86404b3820195dc7d85de6ed590fe835656980e502e87ed2a",
-    "reason": "Learner interface labels and dynamic API-backed question rendering; no embedded released prompt or answer key."
+    "sha256": "207dd5912f48922954211e4d75b5e7a956466a6dbf91119372099c034b8928a6",
+    "reason": "Runtime study or group exam control and Korean UI labels. Content and answers are read from the authenticated database; no private question bank is embedded."
   },
   "apps/frontend/src/features/study/components/sql/mock/exam-runner.tsx": {
     "sha256": "c0f0ce631a9d75ae5c2aff7899d486627a3daaae6c86d6c4b0a647dea784d3bd",

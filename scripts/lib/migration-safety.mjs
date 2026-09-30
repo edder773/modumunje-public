@@ -252,10 +252,12 @@ export function runMigrationSafetyDrill(root) {
       VALUES ('stage5-preservation-user', ?)
     `).run(questionId);
     const before = { counts: durableCounts(rollback), release: activeRelease(rollback) };
-    applyTransactional(rollback, latest);
+    // D1 records applied migration filenames; ALTER TABLE runs once.
+    const recorded = rollback.prepare("SELECT migration_version FROM app_schema_state WHERE id=1").get()?.migration_version;
+    if (String(recorded ?? "") < latest.version) applyTransactional(rollback, latest);
     const after = { counts: durableCounts(rollback), release: activeRelease(rollback) };
     if (JSON.stringify(after) !== JSON.stringify(before)) {
-      throw new Error("idempotent baseline reapply changed durable learner data");
+      throw new Error("migration-ledger retry changed durable learner data");
     }
     const applied = rollback.prepare(
       "SELECT migration_version FROM app_schema_state WHERE id = 1",

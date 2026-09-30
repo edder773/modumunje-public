@@ -7,6 +7,7 @@ export type Attempt = {
   status: "in_progress" | "submitted"; revision: number; active_position: number | null;
   active_since: string | null; started_at: string; submitted_at: string | null;
   last_operation_id: string | null; last_operation_digest: string | null;
+  start_request_id?: string | null; full_mock_json?: string | null;
 };
 export type Item = {
   position: number; source_item_id: string; public_json: string; selected_index: number | null;
@@ -54,8 +55,19 @@ export async function readHome(key: string) {
 export async function readRecords(key: string, before: [string,string] | null) {
   const db=getD1();
   const plan=learnerContextPlan(db,key,{includeRevision:true});
-  const result=await db.batch([...plan.statements, recordsStatement(key,before)]);
-  return { ...plan.parse(result), records: rows<Row>(result[plan.statements.length]) };
+  const result=await db.batch([...plan.statements, recordsStatement(key,before),
+    db.prepare(`SELECT p.unit_id,
+      COUNT(DISTINCT a.id) AS attempts,COUNT(*) AS graded_count,
+      SUM(CASE WHEN ai.selected_index IS NOT NULL THEN 1 ELSE 0 END) AS answered_count,
+      SUM(CASE WHEN ai.selected_index=s.answer_index THEN 1 ELSE 0 END) AS correct_count,
+      SUM(CASE WHEN ai.selected_index IS NOT NULL THEN ai.elapsed_seconds ELSE 0 END) AS elapsed_seconds
+      FROM skct_personal_attempts a JOIN skct_personal_attempt_items ai ON ai.attempt_id=a.id
+      JOIN skct_personal_public_items p ON p.release_id=ai.release_id AND p.source_item_id=ai.source_item_id
+      JOIN skct_personal_secret_items s ON s.release_id=ai.release_id AND s.source_item_id=ai.source_item_id
+      WHERE a.user_key=? AND ai.finalized_at IS NOT NULL AND (a.mode='practice' OR a.status='submitted')
+      GROUP BY p.unit_id ORDER BY p.unit_id`).bind(key)]);
+  return { ...plan.parse(result), records: rows<Row>(result[plan.statements.length]),
+    statistics: rows<Row>(result[plan.statements.length+1]) };
 }
 export async function readOwnedSnapshot(id: string,key: string) {
   const db=getD1();
@@ -63,13 +75,19 @@ export async function readOwnedSnapshot(id: string,key: string) {
   const result=await db.batch([...plan.statements,...snapshotStatements(id,key)]);
   return { ...plan.parse(result), snapshot: snapshotResults(result,plan.statements.length) };
 }
-export async function readStart(key: string, unitId: string, mode: Attempt["mode"], count: number) {
+export async function readStart(key: string, unitId: string, mode: Attempt["mode"], count: number, fullMock = false) {
   const db=getD1();
   const plan=learnerContextPlan(db,key,{includeRevision:true});
   const result=await db.batch([...plan.statements,
     db.prepare("SELECT * FROM skct_personal_attempts WHERE user_key=? AND unit_id=? AND mode=? AND status='in_progress' LIMIT 1").bind(key,unitId,mode),
     db.prepare("SELECT id FROM skct_personal_releases WHERE status='ACTIVE' AND item_count=300 LIMIT 1"),
-    db.prepare(`SELECT p.source_item_id FROM skct_personal_public_items p
+    fullMock ? db.prepare(`SELECT source_item_id,unit_id FROM (
+      SELECT p.source_item_id,p.unit_id,ROW_NUMBER() OVER(PARTITION BY p.unit_id ORDER BY
+        (SELECT COUNT(*) FROM skct_personal_attempt_items ai JOIN skct_personal_attempts a ON a.id=ai.attempt_id
+          WHERE a.user_key=? AND ai.source_item_id=p.source_item_id),p.source_batch,p.source_ordinal) AS ordinal
+      FROM skct_personal_public_items p
+      WHERE p.release_id=(SELECT id FROM skct_personal_releases WHERE status='ACTIVE' AND item_count=300 LIMIT 1)
+    ) WHERE ordinal<=20 ORDER BY unit_id,ordinal`).bind(key) : db.prepare(`SELECT p.source_item_id FROM skct_personal_public_items p
       WHERE p.release_id=(SELECT id FROM skct_personal_releases WHERE status='ACTIVE' AND item_count=300 LIMIT 1)
         AND p.unit_id=?
       ORDER BY (SELECT COUNT(*) FROM skct_personal_attempt_items ai JOIN skct_personal_attempts a ON a.id=ai.attempt_id
@@ -90,7 +108,7 @@ export async function readConcurrentStart(key: string, unitId: string, mode: Att
   ]);
   return snapshotResults(result,0);
 }
-export async function readMutation(key: string,id: string, includeAppend: boolean) {
+export async function readMutation(key: string,id: string, includeAppend: boolean, appendCount = 5) {
   const db=getD1();
   const plan=learnerContextPlan(db,key,{includeRevision:true});
   const appendQuery=db.prepare(`SELECT p.source_item_id FROM skct_personal_public_items p
@@ -99,8 +117,8 @@ export async function readMutation(key: string,id: string, includeAppend: boolea
       ORDER BY (SELECT COUNT(*) FROM skct_personal_attempt_items ai
         WHERE ai.attempt_id=a.id AND ai.source_item_id=p.source_item_id),
         (SELECT COUNT(*) FROM skct_personal_attempt_items ai JOIN skct_personal_attempts prior ON prior.id=ai.attempt_id
-          WHERE prior.user_key=? AND ai.source_item_id=p.source_item_id),p.source_batch,p.source_ordinal LIMIT 5`)
-      .bind(id,key,key);
+          WHERE prior.user_key=? AND ai.source_item_id=p.source_item_id),p.source_batch,p.source_ordinal LIMIT ?`)
+      .bind(id,key,key,appendCount);
   const result=await db.batch([...plan.statements,...snapshotStatements(id,key),
     ...(includeAppend ? [appendQuery] : [])]);
   const offset=plan.statements.length;
@@ -165,10 +183,11 @@ export async function listRecords(key: string, before: [string, string] | null) 
 }
 function recordsStatement(key: string, before: [string, string] | null) {
   return getD1().prepare(`SELECT a.id,a.release_id,a.unit_id,a.mode,a.status,a.started_at,a.submitted_at,
+    CASE WHEN a.full_mock_json IS NOT NULL THEN 1 ELSE 0 END AS full_mock,
     COUNT(ai.position) AS question_count,SUM(CASE WHEN ai.selected_index IS NOT NULL THEN 1 ELSE 0 END) AS answered_count,
     SUM(CASE WHEN ai.finalized_at IS NOT NULL THEN 1 ELSE 0 END) AS finalized_count,
     COALESCE(SUM(ai.elapsed_seconds),0) AS elapsed_seconds,
-    SUM(CASE WHEN ai.selected_index IS NOT NULL AND ai.finalized_at IS NOT NULL AND ai.selected_index=s.answer_index THEN 1 ELSE 0 END) AS correct_count
+    SUM(CASE WHEN ai.selected_index IS NOT NULL AND ai.finalized_at IS NOT NULL AND (a.mode='practice' OR a.status='submitted') AND ai.selected_index=s.answer_index THEN 1 ELSE 0 END) AS correct_count
     FROM skct_personal_attempts a JOIN skct_personal_attempt_items ai ON ai.attempt_id=a.id
     JOIN skct_personal_secret_items s ON s.release_id=ai.release_id AND s.source_item_id=ai.source_item_id
     WHERE a.user_key=? AND (? IS NULL OR a.started_at<? OR (a.started_at=? AND a.id<?))
@@ -269,10 +288,14 @@ export async function commitCheckpoint(attempt: Attempt, input: {
 }
 
 export async function insertAttempt(id: string, key: string, releaseId: string, unitId: string,
-  mode: Attempt["mode"], selected: Array<{ source_item_id: string }>) {
+  mode: Attempt["mode"], selected: Array<{ source_item_id: string }>, options?: { requestId: string; fullMockJson?: string }) {
   const db = getD1();
-  const statements = [db.prepare(`INSERT INTO skct_personal_attempts(id,user_key,release_id,unit_id,mode,status,active_position,active_since)
-    VALUES(?,?,?,?,?,'in_progress',1,CURRENT_TIMESTAMP)`).bind(id,key,releaseId,unitId,mode),
+  const insert = options
+    ? db.prepare(`INSERT INTO skct_personal_attempts(id,user_key,release_id,unit_id,mode,status,active_position,active_since,start_request_id,full_mock_json)
+      VALUES(?,?,?,?,?,'in_progress',1,CURRENT_TIMESTAMP,?,?)`).bind(id,key,releaseId,unitId,mode,options.requestId,options.fullMockJson ?? null)
+    : db.prepare(`INSERT INTO skct_personal_attempts(id,user_key,release_id,unit_id,mode,status,active_position,active_since)
+      VALUES(?,?,?,?,?,'in_progress',1,CURRENT_TIMESTAMP)`).bind(id,key,releaseId,unitId,mode);
+  const statements = [insert,
     ...selected.map((row, index) => db.prepare(`INSERT INTO skct_personal_attempt_items(attempt_id,release_id,position,source_item_id)
       VALUES(?,?,?,?)`).bind(id,releaseId,index+1,row.source_item_id))];
   const results=await db.batch([...statements,...snapshotStatements(id,key)]);

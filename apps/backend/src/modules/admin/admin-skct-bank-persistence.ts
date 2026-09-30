@@ -10,6 +10,7 @@ const GROUP_ACTIVATION_BACKUP_SCHEMA = {
   "0561": PREVIOUS_BACKUP_SCHEMA_VERSION,
   "0562": BACKUP_SCHEMA_VERSION,
   "0563": BACKUP_SCHEMA_VERSION,
+  "0564": BACKUP_SCHEMA_VERSION,
 } as const;
 
 function backupSchemaForGroupActivation(migrationVersion: string) {

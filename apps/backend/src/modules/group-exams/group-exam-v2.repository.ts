@@ -1,3 +1,4 @@
+import { PERSONAL_GROUP_PREFIX, PERSONAL_GROUP_SCHEMA } from "./group-exam-personal-bank";
 import { getRuntimeEnv } from "@backend/infrastructure/database";
 import { APPROVED_SKCT_NEW300_GROUP_RELEASE } from "./domain/group-exam.domain";
 import { GroupExamRepository, type ContentQuestionRow, type MemberRow, type MutationIdempotency, type RunRow } from "./group-exam.repository";
@@ -13,11 +14,16 @@ export class GroupExamV2Repository extends GroupExamRepository {
   // Freeze exactly the membership read for selection; a join/leave/kick between the read
   // and the atomic batch must retry before consuming a quota or a repeat claim.
   startGuard(run: RunRow, members?: MemberRow[]) {
+    const personal = run.source_release_id.startsWith(PERSONAL_GROUP_PREFIX);
     const sql = `EXISTS(SELECT 1 FROM skct_content_releases WHERE id=? AND status='active'
       AND schema_version=? AND release_sha256=? AND release_sha256=?)
-      AND EXISTS(SELECT 1 FROM study_groups WHERE id=? AND status='active')`;
-    const values: unknown[] = [run.source_release_id,APPROVED_SKCT_NEW300_GROUP_RELEASE.schema,
-      APPROVED_SKCT_NEW300_GROUP_RELEASE.sha256,run.source_release_sha256,run.group_id];
+      AND EXISTS(SELECT 1 FROM study_groups WHERE id=? AND status='active')${personal ? `
+      AND EXISTS(SELECT 1 FROM skct_personal_releases source JOIN skct_content_releases mirror
+        ON json_extract(mirror.manifest_json,'$.personalReleaseId')=source.id
+        WHERE mirror.id=? AND source.status='ACTIVE' AND source.item_count=300
+          AND json_extract(mirror.manifest_json,'$.personalContentSha256')=source.content_sha256)` : ""}`;
+    const values: unknown[] = [run.source_release_id,personal ? PERSONAL_GROUP_SCHEMA : APPROVED_SKCT_NEW300_GROUP_RELEASE.schema,
+      personal ? run.source_release_sha256 : APPROVED_SKCT_NEW300_GROUP_RELEASE.sha256,run.source_release_sha256,run.group_id,...(personal ? [run.source_release_id] : [])];
     if (!members) return {sql,values};
     return {sql: `${sql} AND (SELECT COUNT(*) FROM study_group_members WHERE group_id=? AND status='active')=?
       AND NOT EXISTS(SELECT 1 FROM json_each(?) expected WHERE NOT EXISTS(

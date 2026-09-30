@@ -1,3 +1,4 @@
+import { isPersonalGroupRelease } from "../group-exam-personal-bank";
 export const SKCT_AREAS = [
   "언어이해",
   "자료해석",
@@ -10,7 +11,7 @@ export { APPROVED_SKCT_NEW300_GROUP_RELEASE } from "@shared/group-exams/approved
 import { APPROVED_SKCT_NEW300_GROUP_RELEASE } from "@shared/group-exams/approved-release";
 
 export function approvedSkctNew300Release(release: Record<string, unknown> | null) {
-  return release?.id === APPROVED_SKCT_NEW300_GROUP_RELEASE.id
+  return isPersonalGroupRelease(release) || release?.id === APPROVED_SKCT_NEW300_GROUP_RELEASE.id
     && release?.schema_version === APPROVED_SKCT_NEW300_GROUP_RELEASE.schema
     && release?.release_sha256 === APPROVED_SKCT_NEW300_GROUP_RELEASE.sha256
     && release?.status === "active";

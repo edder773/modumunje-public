@@ -22,6 +22,12 @@ export function QuestionRenderer({question}:{question:Record<string,unknown>}) {
       }}>{String(question.prompt_snapshot ?? "")}</ReactMarkdown>
     </div>
     {assets.length>0 && <div className={styles.questionAssets} aria-label="그림 자료">{assets.map(asset=>{
+      const direct=String(asset.url ?? "");
+      if (/^\/api\/private-diagrams\/skct\/[a-f0-9]{64}\.svg$/u.test(direct)) {
+        const alt=typeof asset.alt === "string" ? asset.alt : `${String(question.area_code_snapshot)} 문제 도표`;
+        // eslint-disable-next-line @next/next/no-img-element -- same-origin authenticated diagram route.
+        return <figure key={direct}><img src={direct} alt={alt} loading="lazy" /><figcaption>{alt}</figcaption></figure>;
+      }
       const path=String(asset.path ?? "");
       if(!/^assets\/[A-Za-z0-9._/-]+[.]svg$/u.test(path) || path.includes("..") || path.includes("//")) return null;
       const authored = path.startsWith("assets/skct-personal/");

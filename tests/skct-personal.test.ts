@@ -48,7 +48,7 @@ function seed(db: ReturnType<typeof openCanonicalTestDatabase>) {
 function attempt(value: Record<string, unknown>) { return value.attempt as Record<string, unknown>; }
 function applyContinuousMigration(db: ReturnType<typeof openCanonicalTestDatabase>) {
   const current = db.prepare("SELECT migration_version FROM app_schema_state WHERE id=1").get()?.migration_version;
-  if (current === "0563") return;
+  if (String(current) >= "0563") return;
   assert.equal(current,"0562");
   const file = process.env.SKCT_CONTINUOUS_MIGRATION
     ?? path.join(process.cwd(),"apps/backend/drizzle/0563_skct_personal_continuous.sql");
