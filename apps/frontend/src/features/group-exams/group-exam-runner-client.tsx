@@ -158,13 +158,13 @@ export function GroupExamRunnerClient({runId}:{runId:string}){
 
   const deadlineAt=String(current?.progress?.deadlineAt??display?.deadline_at_utc??"");
   useEffect(()=>{
-    if(!display||status!=="ready"||!deadlineAt)return;
+    if(!display||!["ready","syncing"].includes(status)||!deadlineAt)return;
     let refreshed=false;
     const tick=()=>{
       const seconds=Math.max(0,Math.ceil((Date.parse(deadlineAt)-(Date.now()+offset))/1_000));
       setQuestionRemaining(seconds);
       if(seconds===10||seconds===5)setTimerAnnouncement(`남은 시간 ${seconds}초`);
-      if(seconds===0){setTimerAnnouncement("제한시간이 끝났습니다. 다음 문항을 불러옵니다.");if(!refreshed){refreshed=true;window.setTimeout(()=>void load(),150);}}
+      if(seconds===0){setTimerAnnouncement("제한시간이 끝났습니다. 다음 문항을 불러옵니다.");if(!refreshed&&!pendingRef.current){refreshed=true;window.setTimeout(()=>{if(!pendingRef.current)void load();},150);}}
     };
     tick();const timer=window.setInterval(tick,250);return()=>window.clearInterval(timer);
   },[deadlineAt,display,load,offset,status]);
@@ -221,7 +221,7 @@ export function GroupExamRunnerClient({runId}:{runId:string}){
       <section className={styles.examToolbar} aria-label="시험 진행 상황">
         <div><span className={styles.eyebrow}>{String(display.area_code_snapshot)}</span><strong>{Number(display.position)+1}<small> / {String(current?.run.questionCount)}문항</small></strong></div>
         <div className={styles.examProgress}><progress max={Number(current?.run.questionCount??1)} value={Number(display.position)} aria-label="완료한 문항"/><span>이전 문항으로 돌아갈 수 없습니다.</span></div>
-        <div className={`${styles.examTimer} ${questionRemaining <= 10 ? styles.timerUrgent : ""}`}><span>현재 문항 남은 시간</span><strong>{status === "syncing" ? "확인 중" : `${Math.floor(questionRemaining/60).toString().padStart(2,"0")}:${(questionRemaining%60).toString().padStart(2,"0")}`}</strong></div>
+        <div className={`${styles.examTimer} ${questionRemaining <= 10 ? styles.timerUrgent : ""}`}><span>현재 문항 남은 시간</span><strong>{`${Math.floor(questionRemaining/60).toString().padStart(2,"0")}:${(questionRemaining%60).toString().padStart(2,"0")}`}</strong></div>
       </section>
       <div className={styles.examWorkspace}>
         <section className={styles.runnerQuestion} aria-labelledby="runner-question-title">

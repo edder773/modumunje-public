@@ -77,6 +77,48 @@ export class GroupExamRepository extends GroupExamMutationRepository {
     return this.groupForMember(input.id, input.ownerUserKey);
   }
 
+  async renameSelf(input: { groupId: string; userKey: string; publicName: string; timestamp: string; idempotency: MutationIdempotency }) {
+    const db = this.connection(), execution = input.idempotency.executionId;
+    input.idempotency.mutationAttempted = true;
+    const guard = "EXISTS(SELECT 1 FROM study_group_members WHERE group_id=? AND user_key=? AND status='active' AND last_mutation_execution_id=?)";
+    const values = [input.groupId,input.userKey,execution];
+    const batch = await db.batch([
+      db.prepare(`UPDATE study_group_members SET public_name=?,last_mutation_execution_id=?
+        WHERE group_id=? AND user_key=? AND status='active'
+          AND EXISTS(SELECT 1 FROM study_groups WHERE id=? AND status='active')`)
+        .bind(input.publicName,execution,input.groupId,input.userKey,input.groupId),
+      db.prepare(`UPDATE study_groups SET revision=revision+1,updated_at=? WHERE id=? AND ${guard}`)
+        .bind(input.timestamp,input.groupId,...values),
+      db.prepare(`INSERT INTO study_group_idempotency(actor_user_key,action,idempotency_key,request_digest,execution_id,response_status,response_json,created_at)
+        SELECT ?,?,?,?,?,200,json_object('publicName',?,'revision',g.revision),? FROM study_groups g WHERE g.id=? AND ${guard}`)
+        .bind(input.userKey,input.idempotency.action,input.idempotency.key,input.idempotency.requestDigest,execution,input.publicName,input.timestamp,input.groupId,...values),
+      db.prepare(`SELECT revision FROM study_groups WHERE id=? AND ${guard}`).bind(input.groupId,...values),
+    ]);
+    return Number(batch[0].meta.changes)>0 ? {publicName:input.publicName,revision:Number((batch[3].results?.[0] as {revision:number}).revision)} : null;
+  }
+
+  async ownHistory(groupId: string, userKey: string, before: { at: string; id: string } | null, day: string | null) {
+    const db=this.connection();
+    const start=day ? new Date(`${day}T00:00:00+09:00`).toISOString() : null;
+    const end=start ? new Date(Date.parse(start)+86400000).toISOString() : null;
+    const [group,history]=await db.batch([
+      db.prepare(`SELECT g.id FROM study_groups g JOIN study_group_members m ON m.group_id=g.id
+        WHERE g.id=? AND g.status='active' AND m.user_key=? AND m.status='active'`).bind(groupId,userKey),
+      db.prepare(`SELECT r.id,r.status,r.created_at,r.actual_started_at_utc,r.completed_at,r.question_count_snapshot,
+        COALESCE(r.actual_started_at_utc,r.created_at) AS attempt_at,
+        p.status AS participant_status,CASE WHEN r.status='completed' THEN p.score ELSE NULL END AS score
+        FROM study_group_exam_participants p JOIN study_group_exam_runs r ON r.id=p.run_id
+        WHERE p.user_key=? AND r.group_id=?
+          AND (? IS NULL OR COALESCE(r.actual_started_at_utc,r.created_at) < ? OR (COALESCE(r.actual_started_at_utc,r.created_at)=? AND r.id < ?))
+          AND (? IS NULL OR (COALESCE(r.actual_started_at_utc,r.created_at)>=? AND COALESCE(r.actual_started_at_utc,r.created_at)<?))
+          AND EXISTS(SELECT 1 FROM study_groups g JOIN study_group_members m ON m.group_id=g.id
+            WHERE g.id=r.group_id AND g.status='active' AND m.user_key=? AND m.status='active')
+        ORDER BY attempt_at DESC,r.id DESC LIMIT 21`)
+        .bind(userKey,groupId,before?.at??null,before?.at??null,before?.at??null,before?.id??null,start,start,end,userKey),
+    ]);
+    return {visible:Boolean(group.results?.length),records:(history.results??[]) as Record<string,unknown>[]};
+  }
+
   async createInvite(input: {
     reusable?: boolean;
     id: string;

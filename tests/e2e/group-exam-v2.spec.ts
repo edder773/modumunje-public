@@ -237,3 +237,12 @@ test("a persisted conflict restores explicit retry controls without automatic PO
   await page.evaluate(async({runId:targetRun})=>{const db=await new Promise<IDBDatabase>((resolve,reject)=>{const request=indexedDB.open("modumunje-group-exam-v1",1);request.onsuccess=()=>resolve(request.result);request.onerror=()=>reject(request.error);});const tx=db.transaction(["mutations","drafts"],"readwrite");tx.objectStore("mutations").put({queueId:`${targetRun}:0:question-advance`,runId:targetRun,idempotencyKey:"question-advance:conflict",action:"question-advance",body:{},payloadDigest:"conflict",createdAt:Date.now(),attemptCount:1,state:"conflict"});tx.objectStore("drafts").put({key:`${targetRun}:0`,runId:targetRun,position:0,answers:[1],updatedAt:Date.now()});await new Promise<void>((resolve,reject)=>{tx.oncomplete=()=>resolve();tx.onerror=()=>reject(tx.error);});db.close();},{runId});
   await page.reload();await expect(page.getByText(/다른 화면에서 응시 상태가 변경되었습니다/u)).toBeVisible();await expect(page.getByRole("button",{name:"다시 시도"})).toBeVisible();await expect(page.getByRole("button",{name:/최신 문항으로 돌아가기/u})).toBeVisible();await page.waitForTimeout(1_500);expect(posts).toBe(0);
 });
+
+
+test("the numeric timer keeps ticking while a slow next-question acknowledgement is pending",async({page})=>{
+ let release:()=>void=()=>undefined;const gate=new Promise<void>(resolve=>{release=resolve;});let posted=false;
+ await install(page,async(route)=>{posted=true;await gate;await route.fulfill({json:{saved:true,advanced:true,position:1,progressRevision:1,deadlineAt:question(1).deadline_at_utc,publicQuestionWindow:[question(1)]}});});
+ await page.goto(`/groups/exams/${runId}`);await page.getByRole("radio").first().check();
+ const timer=page.getByText("현재 문항 남은 시간",{exact:true}).locator('..').locator('strong');const before=await timer.innerText();await page.getByRole("button",{name:"다음 문항"}).click();await expect.poll(()=>posted).toBe(true);await expect(timer).toHaveText(/^\d{2}:\d{2}$/);await expect.poll(()=>timer.innerText()).not.toBe(before);await expect(page.getByText("확인 중",{exact:true})).toHaveCount(0);
+ release();await expect(page.getByRole("heading",{name:"2번 문항",exact:true})).toBeVisible();await expect(timer).toHaveText(/^\d{2}:\d{2}$/);
+});

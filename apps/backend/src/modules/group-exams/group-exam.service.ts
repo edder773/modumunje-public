@@ -1,8 +1,10 @@
+import { withPrivateDiagramDimensions } from "../private-diagrams/private-diagram-dimensions";
 import { AUTHENTICATED_USER_EMAIL_HEADER } from "@shared/auth/authenticated-user";
 import { response, string, integer, idempotencyKey, sha256, canonicalJson, rawInviteToken, parseAnswers, safeJson, payload, errorResponse } from "./group-exam-http";
 import { withGroupMetrics, groupMetricPhase } from "@backend/common/observability/group-exam-metrics";
 import { beginPreparedRunV2, createRunV2, GROUP_EXAM_COUNTDOWN_MS, v2Enabled, strictRepeatEnabled, v2Repository, maintainV2, currentV2, currentV2Fast, mutateV2, orderedResultV2 } from "./group-exam-v2.service";
 import {
+  isAdminRequest,
   normalizedEmail,
   learnerUserHash,
   authorizeLearnerRequest,
@@ -35,6 +37,7 @@ import {
   type MutationIdempotency,
   type RunRow,
 } from "./group-exam.repository";
+import { GroupExamAdvanceRepository } from "./group-exam-advance.repository";
 import { GroupExamPresenceRepository } from "./group-exam-presence.repository";
 import { GroupExamLobbyRepository } from "./group-exam-lobby.repository";
 import { PRESENCE_TTL_MS, PRESENCE_RECENT_MS, questionCount, publicSyncRun, publicCurrentPayload, readSyncBody, lobbyDetail } from "./group-exam-view.service";
@@ -43,6 +46,7 @@ import { GroupExamAdminRepository } from "./group-exam-admin.repository";
 const TOKEN_PATTERN = /^[a-zA-Z0-9_-]{43}$/u;
 const PRESENCE_SESSION_PATTERN = /^[a-zA-Z0-9:_-]{16,100}$/u;
 const repository = new GroupExamRepository();
+const advanceRepository = new GroupExamAdvanceRepository();
 const presenceRepository = new GroupExamPresenceRepository();
 const lobbyRepository = new GroupExamLobbyRepository();
 const adminRepository = new GroupExamAdminRepository();
@@ -363,6 +367,18 @@ async function getHandler(request: Request) {
         members: snapshot.members,
       });
     }
+    if (scope === "history") {
+      const groupId=string(url.searchParams.get("groupId"),"그룹 ID");
+      const day=url.searchParams.get("day");
+      if(day && (!/^\d{4}-\d{2}-\d{2}$/u.test(day) || Number.isNaN(Date.parse(`${day}T12:00:00Z`)) || new Date(`${day}T12:00:00Z`).toISOString().slice(0,10)!==day))
+        throw new GroupExamError(400,"날짜를 확인해 주세요.","GROUP_INPUT_INVALID");
+      const beforeAt=url.searchParams.get("beforeAt"),beforeId=url.searchParams.get("beforeId");
+      if(beforeAt && (!beforeId || Number.isNaN(Date.parse(beforeAt)))) throw new GroupExamError(400,"기록 위치를 확인해 주세요.","GROUP_INPUT_INVALID");
+      const result=await repository.ownHistory(groupId,authorization.userKey,beforeAt ? {at:beforeAt,id:beforeId!}:null,day);
+      if(!result.visible) throw new GroupExamError(404,"그룹을 찾을 수 없습니다.","GROUP_NOT_FOUND");
+      const records=result.records.slice(0,20),last=records.at(-1);
+      return response({records,next:result.records.length>20 && last ? {at:last.attempt_at,id:last.id}:null});
+    }
     if (scope === "sync") {
       const groupId = string(url.searchParams.get("groupId"), "그룹 ID");
       return response(await readSyncBody(groupId, authorization.userKey, new Date(), url.searchParams.get("includeCurrent") === "1",
@@ -449,6 +465,33 @@ async function postHandler(request: Request) {
     action = string(body.action, "작업", 40);
     let progressPreflight: Awaited<ReturnType<typeof v2Repository.progressMutationSnapshot>> | undefined;
     const email = normalizedEmail(request.headers.get(AUTHENTICATED_USER_EMAIL_HEADER));
+    // HTTP withSiteIdentity and WS authenticatedCall verify the Google cookie
+    // and replace the identity header on every request. The atomic fast path
+    // checks the active account, maintenance, immutable participant roster,
+    // running contract, both CAS revisions and deadlines before any write.
+    if(action === "question-advance" && email){
+      const runId=string(body.runId,"시험 ID"),position=integer(body.position,"문항 위치",0,499);
+      const revision=integer(body.expectedProgressRevision,"진행 리비전"),key=idempotencyKey(request,body);
+      const answers=body.answers===undefined ? undefined:parseAnswers(body.answers);
+      const answerRevision=answers ? integer(body.expectedAnswerRevision,"답안 리비전"):undefined;
+      const userKey=await learnerUserHash(email),now=new Date().toISOString();
+      const requestDigest=await sha256(canonicalJson({runId,position,expectedProgressRevision:revision,answers:answers??null,expectedAnswerRevision:answerRevision??null}));
+      const answerHash=answers ? await sha256(JSON.stringify(answers)):undefined;
+      const result=await groupMetricPhase("advance",()=>advanceRepository.advance({runId,userKey,position,revision,answers,answerRevision,
+        answerHash,admin:isAdminRequest(request),now,
+        idempotency:{actorUserKey:userKey,action,key,requestDigest,executionId:crypto.randomUUID(),responseStatus:200,response:{},timestamp:now},
+      }));
+      if(result.account_status === "blocked") return response({code:"ACCOUNT_BLOCKED",error:"관리자에 의해 이용이 제한된 계정입니다."},403);
+      if(result.maintenance && !isAdminRequest(request)) return response({error:"현재 유지보수 중입니다. 잠시 후 다시 이용해 주세요."},503);
+      if(result.response_json){
+        if(result.request_digest!==requestDigest) throw new GroupExamError(409,"멱등성 키가 다른 요청에 사용되었습니다.","GROUP_IDEMPOTENCY_CONFLICT");
+        const acknowledged=safeJson(result.response_json,{}) as Record<string,unknown>;
+        if(Array.isArray(acknowledged.publicQuestionWindow)) acknowledged.publicQuestionWindow=acknowledged.publicQuestionWindow.map((question:Record<string,unknown>)=>({
+          ...question,asset_refs_snapshot_json:withPrivateDiagramDimensions(question.asset_refs_snapshot_json),
+        }));
+        return response(acknowledged);
+      }
+    }
     // This header is populated only by authenticated HTTP/WS ingress. Overlap
     // independent reads, but authorize every operation before using or returning
     // a snapshot, including blocked-account and maintenance checks.
@@ -591,6 +634,15 @@ async function postHandler(request: Request) {
       return await idempotentMutation(request, body, userKey, action, { groupId, targetMembershipId }, { transferred: true }, 200, now, async (idempotency) => {
         if (!await repository.transferOwner({ groupId, actorUserKey: userKey, targetMembershipId, timestamp: now, idempotency })) throw new GroupExamError(409, "대표를 이관할 수 없습니다.", "GROUP_OWNER_TRANSFER_CONFLICT");
       });
+    }
+    if (action === "member-name-update") {
+      const groupId=string(body.groupId,"그룹 ID"),publicName=publicGroupName(body.publicName,"그룹 닉네임");
+      return await idempotentMutation(request,body,userKey,action,{groupId,publicName},{publicName},200,now,async(idempotency)=>{
+        const renamed=await repository.renameSelf({groupId,userKey,publicName,timestamp:now,idempotency});
+        if(!renamed)
+          throw new GroupExamError(404,"활성 그룹원 정보를 찾을 수 없습니다.","GROUP_MEMBER_NOT_FOUND");
+        idempotency.response=renamed;
+      },undefined,true);
     }
     if (action === "group-leave") {
       const groupId = string(body.groupId, "그룹 ID");

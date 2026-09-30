@@ -1,10 +1,12 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { connectGroupSocket, type GroupSocketStatus } from "./group-exam-socket";
 import styles from "./group-exam.module.css";
 import { groupExamApi as api, GroupApiError } from "./group-exam-api";
+import { MyExamHistory } from "./group-exam-history";
 import { GroupExamModal } from "./group-exam-modal";
 import { seedGroupExam } from "./group-exam-start-state";
 import { finishLobbyPoll, nextLobbyPoll, type LobbyPollDeadlines } from "./group-exam-lobby-poll";
@@ -68,8 +70,8 @@ export function GroupExamClient() {
   const selectedIdRef = useRef("");
   const groupsRef = useRef(groups);
   useEffect(() => { groupsRef.current = groups; }, [groups]);
-  const createForm = useRef<HTMLDetailsElement>(null);
-  const createName = useRef<HTMLInputElement>(null);
+  const [dialog,setDialog]=useState<"create"|"leave"|"nickname"|null>(null);
+  const [nickname,setNickname]=useState("");
   const hydratedDetailId = useRef("");
   const syncRequestSequence = useRef(0);
   const syncPhase = useRef("idle");
@@ -88,11 +90,11 @@ export function GroupExamClient() {
     selectedIdRef.current = groupId;
     syncRequestSequence.current += 1;
     hydratedDetailId.current = "";
-    setDetail(null); setMembers([]); setSync(null);
+    setDialog(null); setDetail(null); setMembers([]); setSync(null);
     syncRef.current = null; syncPhase.current = "idle";
     setPresenceHealth({ status: "unknown", lastSuccessAt: null });
     setSelectedId(groupId);
-  }, []);
+  }, [setDialog]);
   const forgetGroup = useCallback((groupId: string) => {
     const next = groupsRef.current.filter(group => group.id !== groupId);
     groupsRef.current = next; setGroups(next);
@@ -200,6 +202,12 @@ export function GroupExamClient() {
       if (action === "settings-update" && body.settings) {
         latestDetail = { ...detail, ...(body.settings as AnyRecord) };
         if (selectedIdRef.current === detailGroupId) setDetail(latestDetail);
+      } else if (action === "member-name-update") {
+        if(selectedIdRef.current===detailGroupId) {
+          setDetail(value=>value?{...value,public_name:body.publicName,revision:body.revision}:value);
+          setMembers(value=>value.map(member=>member.is_self?{...member,public_name:body.publicName}:member));
+          setGroups(value=>value.map(group=>group.id===detailGroupId?{...group,public_name:body.publicName}:group));
+        }
       } else if (action === "group-delete" || action === "group-leave") {
         if (detail?.is_owner) setOwnedActiveCount(count => Math.max(0, count - 1));
         forgetGroup(detailGroupId);
@@ -240,7 +248,7 @@ export function GroupExamClient() {
   async function createGroup(formData: FormData) {
     const body = await mutate("group-create", { name: formData.get("name"), publicName: formData.get("publicName"), memberLimit: 50 });
     const id = String((body?.group as AnyRecord | undefined)?.id ?? "");
-    if (id) selectGroup(id);
+    if (id) { selectGroup(id); setDialog(null); }
   }
 
   const refreshSync = useCallback(async (heartbeat: boolean, includeSync = true) => {
@@ -268,6 +276,10 @@ export function GroupExamClient() {
       setPresenceHealth({ status: "fresh", lastSuccessAt: Date.now() });
       const phase = String(current.phase ?? "idle");
       if (current.group) setDetail(previous => previous ? {...previous, ...(current.group as AnyRecord)} : previous);
+      if(Array.isArray(current.presence)) {
+        const names=new Map((current.presence as AnyRecord[]).map(member=>[String(member.membership_id),member.public_name]));
+        setMembers(previous=>previous.map(member=>names.has(String(member.membership_id)) ? {...member,public_name:names.get(String(member.membership_id))}:member));
+      }
       syncPhase.current = phase;
       if (current.run) {
             const runId = String((current.run as AnyRecord | undefined)?.id ?? "");
@@ -360,6 +372,7 @@ export function GroupExamClient() {
 
   return (
     <main className={styles.page}>
+      <nav className={styles.pageNav} aria-label="페이지 이동"><Link href="/">← 메인으로</Link><Link href="/learn/skct">SKCT 개인학습</Link></nav>
       <header className={styles.hero}>
         <div><p className={styles.eyebrow}>함께 푸는 SKCT</p><h1>그룹 모의시험</h1>
         <p>같은 문제, 같은 시작 시각. 개인학습 문제은행의 다섯 영역을 함께 풀어 보세요.</p></div>
@@ -376,11 +389,7 @@ export function GroupExamClient() {
           <label>그룹 선택<select value={selectedId} onChange={(event) => selectGroup(event.target.value)}>
             <option value="">그룹을 선택하세요</option>{groups.map((group) => <option key={String(group.id)} value={String(group.id)}>{String(group.name)}</option>)}
           </select></label>
-          <details ref={createForm} className={styles.createGroup} open={groups.length === 0}><summary>새 그룹 만들기</summary><form action={createGroup} className={styles.stack}>
-            <label>그룹 이름<input ref={createName} name="name" minLength={2} maxLength={80} required /></label>
-            <label>표시 이름<input name="publicName" minLength={2} maxLength={40} required /></label>
-            <button disabled={pendingActions.has("group-create") || ownedActiveCount >= 3}>그룹 만들기</button>
-          </form></details>
+          <button className={styles.createGroupButton} disabled={ownedActiveCount>=3} onClick={()=>setDialog("create")}>새 그룹 만들기</button>
           <div className={styles.bankNote}><strong>개인학습 문제은행</strong><p>언어이해 · 자료해석 · 창의수리 · 언어추리 · 수열추리</p><p>시험이 시작되면 참가자와 문항 구성이 고정됩니다.</p></div>
         </aside>
 
@@ -390,7 +399,7 @@ export function GroupExamClient() {
           <p className={styles.eyebrow}>함께 시작하는 모의시험</p><h2>{groups.length ? "함께 풀 그룹을 선택하세요" : "첫 그룹을 만들어 함께 풀어 보세요"}</h2>
           <p>그룹을 만들고 초대 링크를 공유하면 같은 문제를 같은 시각에 풀 수 있습니다.</p>
           <div className={styles.emptyAreas}>{GROUP_EXAM_AREAS.map(area => <span key={area}>{area}</span>)}</div>
-          <button onClick={() => { if (createForm.current) createForm.current.open = true; createName.current?.focus(); }}>새 그룹 만들기</button>
+          <button onClick={()=>setDialog("create")}>그룹 만들기</button>
           <p className={styles.emptyHint}>초대 링크를 받았다면 해당 링크에서 그룹에 참여할 수 있습니다.</p>
         </article>}
 
@@ -399,6 +408,7 @@ export function GroupExamClient() {
           <p>현재 {String(detail.active_members)}명{Number(detail.reserved_invites)>0 ? ` · 초대 예약 ${String(detail.reserved_invites)}명` : ""} · 정원 {String(detail.member_limit)}명</p></div>
           <span className={`${styles.phase} ${phase === "running" ? styles.phaseLive : ""}`}>{phase === "running" ? "시험 진행 중" : phase === "scheduled" ? "예약 대기" : phase === "finalizing" ? "채점 중" : phase === "completed" ? "최근 시험 완료" : "대기실"}</span></div>
           <LobbySummary detail={detail} />
+          <div className={styles.nicknameRow}><p>내 그룹 닉네임 <strong>{String(detail.public_name??selected?.public_name??"")}</strong></p><button className={styles.secondary} onClick={()=>{setNickname(String(detail.public_name??selected?.public_name??""));setDialog("nickname");}}>닉네임 변경</button></div>
           <h3 className={styles.memberHeading}>참가자 <span>{members.length}명</span></h3>
           <ul className={styles.members}>{members.map((member) => {
             const memberPresence = presenceByMembership.get(String(member.membership_id)) ?? "offline";
@@ -414,9 +424,9 @@ export function GroupExamClient() {
             </span>}
           </li>;})}</ul>
           {isOwner && <OwnerControls key={selectedId} pendingActions={pendingActions} capabilities={capabilities} groupId={selectedId} detail={detail}
-            members={members} phase={phase} mutate={mutate} pending={settingsPendingAttempts.get(selectedId) ?? null}
+            members={members} phase={phase} mutate={mutate} onLeave={()=>setDialog("leave")} pending={settingsPendingAttempts.get(selectedId) ?? null}
             onPendingChange={(attempt) => updateSettingsPendingAttempt(selectedId, attempt)} reloadDetail={refreshDetail} />}
-          {!isOwner && <button className={styles.leaveButton} disabled={pendingActions.has("group-leave")} onClick={() => mutate("group-leave", { groupId: selectedId })}>그룹 나가기</button>}
+          {!isOwner && <button className={styles.leaveButton} disabled={pendingActions.has("group-leave")} onClick={()=>setDialog("leave")}>그룹 나가기</button>}
         </article>}
 
         {selectedId && <article className={`${styles.card} ${styles.examStage}`}>
@@ -425,9 +435,27 @@ export function GroupExamClient() {
 
           {["running","finalizing"].includes(String(selected?.recent_run_status ?? phase)) && Boolean(selected?.recent_run_id) && <button onClick={()=>router.push(`/groups/exams/${encodeURIComponent(String(selected?.recent_run_id))}`)}>시험 전용 화면 열기</button>}
           {selected?.recent_run_status === "completed" && <button className={styles.secondary} onClick={()=>router.push(`/groups/results/${encodeURIComponent(String(selected?.recent_run_id))}`)}>최근 결과 보기</button>}
+          <MyExamHistory key={selectedId} groupId={selectedId} refreshKey={`${phase}:${String(selected?.recent_run_id??"")}`} />
         </article>}
         </section>
       </section>
+      {dialog === "create" && <GroupExamModal title="새 그룹 만들기" onClose={()=>setDialog(null)} closeDisabled={pendingActions.has("group-create")} initialFocus="input[name=name]">
+        <p>그룹을 만들고 초대 링크를 공유해 함께 시험을 시작하세요.</p>
+        <form action={createGroup} className={styles.stack}><label>그룹 이름<input name="name" minLength={2} maxLength={80} required /></label>
+          <label>그룹 닉네임<input name="publicName" minLength={2} maxLength={40} required aria-describedby="create-nickname-help" /></label>
+          <p id="create-nickname-help">이 그룹의 참가자 목록과 시험 결과에 표시되는 이름입니다.</p>
+          <div className={styles.modalActions}><button type="button" className={styles.secondary} onClick={()=>setDialog(null)} disabled={pendingActions.has("group-create")}>취소</button><button disabled={pendingActions.has("group-create")||ownedActiveCount>=3}>{pendingActions.has("group-create")?"만드는 중…":"그룹 만들기"}</button></div>
+        </form></GroupExamModal>}
+      {dialog === "nickname" && detail && <GroupExamModal title="그룹 닉네임 변경" onClose={()=>setDialog(null)} closeDisabled={pendingActions.has("member-name-update")} initialFocus="input[name=nickname]">
+        <form className={styles.stack} onSubmit={async(event)=>{event.preventDefault();const saved=await mutate("member-name-update",{groupId:selectedId,publicName:nickname},{successNotice:"그룹 닉네임을 변경했습니다."});if(saved)setDialog(null);}}>
+          <label>그룹 닉네임<input name="nickname" value={nickname} onChange={event=>setNickname(event.target.value)} minLength={2} maxLength={40} required aria-describedby="nickname-help" /></label><p id="nickname-help">이 그룹에서만 사용하는 이름입니다. 이미 시작한 시험의 이름은 유지됩니다.</p>
+          <div className={styles.modalActions}><button className={styles.secondary} type="button" disabled={pendingActions.has("member-name-update")} onClick={()=>setDialog(null)}>취소</button><button disabled={pendingActions.has("member-name-update")||nickname.trim().length<2}>{pendingActions.has("member-name-update")?"저장 중…":"닉네임 저장"}</button></div>
+        </form></GroupExamModal>}
+      {dialog === "leave" && detail && <GroupExamModal title="그룹 나가기" onClose={()=>setDialog(null)} closeDisabled={pendingActions.has("group-leave")}>
+        <p><strong>{String(detail.name)}</strong> 그룹에서 나가시겠습니까?</p>
+        {Number(detail.active_members)===1 ? <p>마지막 참가자가 나가면 그룹이 사라지며, 기존 초대 링크로 다시 참여할 수 없습니다.</p> : isOwner ? <p>다른 참가자가 남아 있습니다. 먼저 대표를 다른 그룹원에게 위임해 주세요.</p> : <p>다시 참여하려면 초대 링크가 필요합니다.</p>}
+        <div className={styles.modalActions}><button className={styles.secondary} onClick={()=>setDialog(null)} disabled={pendingActions.has("group-leave")}>취소</button><button disabled={pendingActions.has("group-leave")||(isOwner&&Number(detail.active_members)>1)} onClick={async()=>{if(await mutate("group-leave",{groupId:selectedId}))setDialog(null);}}>{pendingActions.has("group-leave")?"나가는 중…":"그룹 나가기"}</button></div>
+      </GroupExamModal>}
       {selectedId && !detail && <p role="status">그룹 정보를 확인하는 중입니다.</p>}
     </main>
   );
@@ -444,7 +472,7 @@ function LobbySummary({ detail }: {detail: AnyRecord}) {
   </div>;
 }
 
-function OwnerControls({ pendingActions, capabilities, groupId, detail, members, phase, mutate, pending, onPendingChange, reloadDetail }: {
+function OwnerControls({ pendingActions, capabilities, groupId, detail, members, phase, mutate, onLeave, pending, onPendingChange, reloadDetail }: {
   pendingActions: Set<string>;
   capabilities: { personalProgress: boolean; strictRepeat: boolean };
   groupId: string;
@@ -452,6 +480,7 @@ function OwnerControls({ pendingActions, capabilities, groupId, detail, members,
   members: AnyRecord[];
   phase: string;
   mutate: UserMutation;
+  onLeave: () => void;
   pending: SettingsPendingAttempt | null;
   onPendingChange: (attempt: SettingsPendingAttempt | null) => void;
   reloadDetail: (groupId: string) => Promise<AnyRecord | null>;
@@ -481,7 +510,7 @@ function OwnerControls({ pendingActions, capabilities, groupId, detail, members,
   }
   return <div className={styles.stack}>
     <h3>대표 관리</h3>
-    <div className={styles.ownerControls}><div className={styles.ownerPrimary}><p>참가자가 준비되면 시험을 시작하세요.</p><button disabled={startBlocked} onClick={() => setModal("start")}>{quotaRemaining <= 0 ? "오늘 응시 완료" : "시험 시작"}</button></div><div className={styles.ownerSettings}><button className={styles.secondary} onClick={() => { setDraft(groupSettingsDraft(detail,pending?.submission)); setSettingsStatus(pending ? "unconfirmed" : "idle"); setModal("settings"); }}>그룹 설정</button><button className={styles.secondary} onClick={() => setModal("invite")}>초대 링크</button></div><div className={styles.ownerUtility}><button className={styles.leaveButton} disabled={pendingActions.has("group-leave")} onClick={() => mutate("group-leave", { groupId })}>그룹 나가기</button><button className={styles.deleteButton} onClick={()=>setDeleteOpen(true)}>그룹 삭제</button></div></div>
+    <div className={styles.ownerControls}><div className={styles.ownerPrimary}><p>참가자가 준비되면 시험을 시작하세요.</p><button disabled={startBlocked} onClick={() => setModal("start")}>{quotaRemaining <= 0 ? "오늘 응시 완료" : "시험 시작"}</button></div><div className={styles.ownerSettings}><button className={styles.secondary} onClick={() => { setDraft(groupSettingsDraft(detail,pending?.submission)); setSettingsStatus(pending ? "unconfirmed" : "idle"); setModal("settings"); }}>그룹 설정</button><button className={styles.secondary} onClick={() => setModal("invite")}>초대 링크</button></div><div className={styles.ownerUtility}><button className={styles.leaveButton} disabled={pendingActions.has("group-leave")} onClick={onLeave}>그룹 나가기</button><button className={styles.deleteButton} onClick={()=>setDeleteOpen(true)}>그룹 삭제</button></div></div>
     {modal === "settings" && <GroupExamModal title="그룹 설정" onClose={() => setModal(null)}>
     <form onSubmit={async (event) => {
       event.preventDefault();

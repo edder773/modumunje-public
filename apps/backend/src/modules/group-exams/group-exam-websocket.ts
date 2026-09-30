@@ -72,7 +72,7 @@ export async function handleGroupExamWebSocket(request:Request):Promise<Response
     let target:URL;try{target=new URL(String(frame.path??""),request.url);}catch{send(client,{type:"response",id,status:400,body:{error:"요청 주소가 올바르지 않습니다."}});return;}const method=String(frame.method??"GET");
     const scope=target.searchParams.get("scope")??"";const body=frame.body;
     if(target.origin!==url.origin||target.pathname!=="/api/group-exams"||!["GET","POST"].includes(method)
-      ||method==="GET"&&!new Set(["lobby","groups","group","sync","current","result"]).has(scope)
+      ||method==="GET"&&!new Set(["lobby","groups","group","history","sync","current","result"]).has(scope)
       ||(target.searchParams.get("groupId")&&target.searchParams.get("groupId")!==groupId)
       ||(runId&&target.searchParams.get("runId")&&target.searchParams.get("runId")!==runId)
       ||(body?.groupId&&body.groupId!==groupId)||(runId&&body?.runId&&body.runId!==runId)){

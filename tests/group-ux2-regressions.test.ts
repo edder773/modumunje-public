@@ -17,15 +17,15 @@ test('separates instructions from introductory sentences and preserves ranges, c
  assert.equal(splitGroupQuestionPrompt('문장 속 물음표? 뒤의 자료는 지문에 속한다.').instruction,'');
 });
 
-test('overlaps independent D1 reads and preserves authorization, CAS and idempotency before revealing a next question',()=>fixture(async(db,_groupId,runId)=>{
+test('commits a guarded non-terminal advance in one D1 round trip and preserves authorization, CAS and idempotency',()=>fixture(async(db,_groupId,runId)=>{
  const raw=sqliteD1(db);let active=0,maximum=0;const spans:Array<{start:number;end:number}>=[];
  async function trip<T>(work:()=>Promise<T>):Promise<T>{const span={start:performance.now(),end:0};spans.push(span);active++;maximum=Math.max(maximum,active);await new Promise(r=>setTimeout(r,100));try{return await work();}finally{span.end=performance.now();active--;}}
  const delayed={prepare(sql:string){const statement=raw.prepare(sql);const wrap:any={bind(...values:any[]){statement.bind(...values);return wrap;},all:()=>trip(()=>statement.all()),run:()=>trip(()=>statement.run()),first:(column?:string)=>trip(()=>statement.first(column)),raw:()=>trip(()=>statement.raw()),_statement:statement};return wrap;},batch:(statements:any[])=>trip(()=>raw.batch(statements.map(s=>s._statement)))};
  globalThis.__BAEUMZIP_ENV__!.DB=delayed as unknown as D1Database;
  const advance={action:'question-advance',runId,position:0,answers:[1],expectedAnswerRevision:0,expectedProgressRevision:0,idempotencyKey:'overlap-advance-test'};
  const began=performance.now();const result=await call('owner@example.test',advance);const elapsedMs=performance.now()-began;
- assert.equal(result.status,200,JSON.stringify(result));assert.equal(result.body.position,1);assert.equal(maximum,2);assert.equal(spans.length,3);assert.ok(elapsedMs<spans.reduce((sum,s)=>sum+s.end-s.start,0)-50);assert.doesNotMatch(JSON.stringify(result.body),/correct_answers|SYNTHETIC_PRIVATE_EXPLANATION/);
- console.log(JSON.stringify({case:'100ms_per_D1_trip',elapsedMs,serialD1Ms:spans.reduce((sum,s)=>sum+s.end-s.start,0),maximumConcurrentReads:maximum}));
+ assert.equal(result.status,200,JSON.stringify(result));assert.equal(result.body.position,1);assert.equal(maximum,1);assert.equal(spans.length,1);assert.ok(elapsedMs<180);assert.doesNotMatch(JSON.stringify(result.body),/correct_answers|SYNTHETIC_PRIVATE_EXPLANATION/);
+ console.log(JSON.stringify({case:'100ms_per_D1_trip',elapsedMs,serialD1Ms:spans.reduce((sum,s)=>sum+s.end-s.start,0),D1RoundTrips:spans.length}));
  assert.deepEqual((await call('owner@example.test',advance)).body,result.body);
  assert.equal((await call('owner@example.test',{...advance,idempotencyKey:'stale-progress-test'})).status,409);
  const owner=await learnerUserHash('owner@example.test');const progressBefore=db.prepare('SELECT * FROM study_group_exam_participant_progress WHERE run_id=? AND user_key=?').get(runId,owner);

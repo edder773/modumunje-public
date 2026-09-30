@@ -4,7 +4,7 @@
     "reason": "Server-side group session control and localized errors; question and answer values are fetched at runtime, not embedded."
   },
   "apps/backend/src/modules/group-exams/group-exam.service.ts": {
-    "sha256": "8db839c6f42207fd77c41e0ef30c30e2652d30caff3050e276f8411fbf07c76c",
+    "sha256": "e53c042c39a5e7e0f7a09290a02b7260aa27706d86655c3dd95cd54f34ff1651",
     "reason": "Runtime study or group exam control and Korean UI labels. Content and answers are read from the authenticated database; no private question bank is embedded."
   },
   "apps/backend/src/modules/skct-personal/skct-personal-release-admin.ts": {
@@ -40,7 +40,7 @@
     "reason": "Administrator form labels and dynamic database-backed content rendering; no fixed question, choice or answer rows."
   },
   "apps/frontend/src/features/group-exams/group-exam-client.tsx": {
-    "sha256": "ad885de3f40181e4ac4d5ae3f0f85f824cbd2a6ec0636ea43c6cd04d0c767c95",
+    "sha256": "44f82164dc9b6619898c4362296c11e935b7b44d61a055e5d0105594513d80ff",
     "reason": "Runtime study or group exam control and Korean UI labels. Content and answers are read from the authenticated database; no private question bank is embedded."
   },
   "apps/frontend/src/features/study/components/local-practice/workbook.tsx": {

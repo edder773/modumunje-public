@@ -90,8 +90,8 @@ type ErrorContext = {
 };
 
 const SAFE_OPERATIONS = new Set([
-  "groups", "group", "sync", "invite", "current", "result",
-  "group-create", "group-delete", "settings-update", "group-leave", "owner-transfer", "member-kick",
+  "groups", "group", "history", "sync", "invite", "current", "result",
+  "member-name-update", "group-create", "group-delete", "settings-update", "group-leave", "owner-transfer", "member-kick",
   "invite-create", "invite-resend", "invite-revoke", "invite-accept", "presence-heartbeat",
   "run-start", "run-cancel", "answer-save", "question-advance", "run-submit",
   "question-count-set", "question-count-reset", "quota-grant", "quota-reset",

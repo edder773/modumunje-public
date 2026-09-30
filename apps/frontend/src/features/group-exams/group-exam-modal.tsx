@@ -8,11 +8,13 @@ export function GroupExamModal({
   children,
   onClose,
   closeDisabled = false,
+  initialFocus,
 }: {
   title: string;
   children: ReactNode;
   onClose: () => void;
   closeDisabled?: boolean;
+  initialFocus?: string;
 }) {
   const dialogRef = useRef<HTMLElement>(null);
   const closeRef = useRef(onClose);
@@ -36,7 +38,7 @@ export function GroupExamModal({
       branch = branch.parentElement;
     }
     document.body.style.overflow = "hidden";
-    dialog?.querySelector<HTMLElement>("[data-group-modal-close]")?.focus();
+    dialog?.querySelector<HTMLElement>(initialFocus??"[data-group-modal-close]")?.focus();
 
     function onKeyDown(event: KeyboardEvent) {
       if (event.key === "Escape" && !closeDisabledRef.current) {
@@ -71,7 +73,7 @@ export function GroupExamModal({
       for (const {element, wasInert} of inerted) element.inert = wasInert;
       previousFocus?.focus();
     };
-  }, []);
+  }, [initialFocus]);
 
   return <div className={styles.modalBackdrop} role="presentation" onMouseDown={(event) => {
     if (event.target === event.currentTarget && !closeDisabled) onClose();

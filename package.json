@@ -15,7 +15,7 @@
     "verify:migrations": "node scripts/verify-migration-safety.mjs",
     "build": "bash scripts/sites-env.sh -- vinext build && node --import tsx scripts/generate-static-asset-headers.ts",
     "test": "npm run test:synthetic",
-    "test:synthetic": "node --import tsx --test tests/public-synthetic-smoke.test.ts tests/immutable-static-assets.test.ts tests/static-asset-headers.test.ts tests/public-boundary-guard.test.mjs tests/skct-personal-workspace.test.ts tests/group-personal-bank.test.ts tests/group-ux-regressions.test.ts tests/group-bank-health.test.ts tests/group-ux2-regressions.test.ts",
+    "test:synthetic": "node --import tsx --test tests/public-synthetic-smoke.test.ts tests/immutable-static-assets.test.ts tests/static-asset-headers.test.ts tests/public-boundary-guard.test.mjs tests/skct-personal-workspace.test.ts tests/group-personal-bank.test.ts tests/group-ux-regressions.test.ts tests/group-bank-health.test.ts tests/group-ux2-regressions.test.ts tests/group-ux3-regressions.test.ts",
     "verify:public": "node scripts/check-public-boundary.mjs"
   },
   "dependencies": {
